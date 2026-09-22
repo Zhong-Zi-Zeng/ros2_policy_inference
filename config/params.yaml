@@ -1,0 +1,34 @@
+policy_inference_node:
+  ros__parameters:
+    # Subscribe to these topics for the policy input
+    joint_state_topic: "/left_arm/joint_states"
+    rgb_topic: "/camera_L/color/image_raw/compressed"
+    depth_topic: "/camera_L/depth/aligned_depth_to_color"
+    tcp_pose_topic: "/left_arm/tcp_pose_world"
+    ft_sensor_topic: "/left_ft/wrench_compensated"
+
+    # Topic to publish the predicted action to.
+    action_topic: "/il/grasp/action"
+
+    # Which policies/*.py implementation to run
+    policy_name: "dummy"
+
+    # How often the policy runs (Hz). Independent of camera/topic rates —
+    # each tick uses whatever the latest message on every topic is.
+    inference_rate_hz: 10.0
+
+    # How long (seconds) a subscribed topic may go without a message before
+    # a warning is logged (no publisher / no data yet / went stale).
+    topic_timeout_sec: 2.0
+
+    # Camera images are resized to image_size x image_size before being fed
+    # to the policy (same size the training data was recorded at).
+    image_size: 256
+
+    # Link_6 -> TCP offset
+    ee_pos_offset: [0.0, 0.0, 0.2204]
+    ee_rot_offset_xyzw: [0.70711, 0.0, 0.70711, 0.0]
+
+    # Gripper setting
+    initial_gripper_open: true
+    gripper_open_threshold: 0.5
