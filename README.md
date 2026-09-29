@@ -1,104 +1,74 @@
-# ROS 2 Policy Inference
+# 🤖 ROS 2 Policy Inference
 
-Run a trained **IL / VLA policy** on a real robot arm.
+Run IL / VLA policies with camera and robot observations.
+Publish predicted end-effector actions to `/il/grasp/action`.
 
-**Input:** camera + robot proprioception  
-**Output:** predicted end-effector action
+## 🚀 Run
 
----
+Set `policy_name` in `config/params.yaml`: `dummy`, `act`, or `pi`.
 
-## Quick Start
+> 💡 Start with `dummy` to check inputs and preprocessing without a checkpoint.
 
-### Build
+### 🐳 Docker
+
+Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+
+```bash
+./run_docker.sh        # Start inference
+./run_docker.sh bash   # Open a shell
+```
+
+The script pulls `lerobot_ros2` from the GitLab Package Registry if unavailable locally.
+The image contains dependencies only; repository code is mounted and rebuilt at startup.
+After `git pull`, restart the container to apply code changes.
+
+### 💻 Local
+
+Requires ROS 2 Jazzy and the policy's dependencies.
 
 ```bash
 source /opt/ros/jazzy/setup.bash
 colcon build --packages-select ros2_policy_inference
 source install/setup.bash
-```
-
-### Launch
-
-```bash
 ros2 launch ros2_policy_inference inference.launch.py
 ```
 
-### Inspect Actions
+### 📡 Check output
 
 ```bash
 ros2 topic echo /il/grasp/action
 ```
 
----
-
-## Data Flow
-
-```text
-Camera / Robot Sensors
-          │
-          ▼
-    Preprocessing
-          │
-          ▼
-    Policy Inference
-          │
-          ▼
-   /il/grasp/action
-```
-
----
-
-## ROS Topics
+## 🔌 ROS Interface
 
 ### Inputs
 
-| Source | Topic | Type | Processed as |
-|:--|:--|:--|:--|
-| RGB camera | `/camera_L/color/image_raw/compressed` | `CompressedImage` | RGB image, `256 × 256 × 3` |
-| Depth camera | `/camera_L/depth/aligned_depth_to_color` | `Image` | Depth image, `256 × 256` *(nearest resize)* |
-| Joint state | `/left_arm/joint_states` | `JointState` | Position `(6,)`, velocity `(6,)` |
-| TCP pose | `/left_arm/tcp_pose_world` | `PoseStamped` | EE-offset position `(3,)`, quaternion `(4,)` |
-| Force / torque | `/left_ft/wrench_compensated` | `WrenchStamped` | `[fx, fy, fz, tx, ty, tz]` `(6,)` |
+| Topic | Message type | Preprocessed observation |
+|:--|:--|:--|
+| `/camera_L/color/image_raw/compressed` | `CompressedImage` | RGB: `256 × 256 × 3` |
+| `/camera_L/depth/aligned_depth_to_color` | `Image` | Depth: `256 × 256`, nearest-neighbor resize |
+| `/left_arm/joint_states` | `JointState` | Position: `(6,)`; velocity: `(6,)` |
+| `/left_arm/tcp_pose_world` | `PoseStamped` | EE-offset position: `(3,)`; quaternion: `(4,)` |
+| `/left_ft/wrench_compensated` | `WrenchStamped` | `[fx, fy, fz, tx, ty, tz]` |
 
 ### Output
 
-| Topic | Type | Action format |
+| Topic | Message type | Format |
 |:--|:--|:--|
 | `/il/grasp/action` | `Float64MultiArray` | `[dx, dy, dz, drx, dry, drz, gripper]` |
 
----
+## 🛠️ Development
 
-## Select a Policy
+### Add a policy
 
-Set `policy_name` to any registered policy, such as `dummy`, `act`, or `pi`.
+1. Subclass `PolicyModel` in `policies/your_policy.py`; see `policies/dummy_policy.py`.
+2. Define observation and action specs in `policies/base_policy.py`.
+3. Register the policy in `policies/__init__.py` through `create_policy()`.
+
+### Publish a Docker image
+
+Rebuild and publish only when the Dockerfile or image dependencies change:
 
 ```bash
-ros2 launch ros2_policy_inference inference.launch.py \
-  --ros-args -p policy_name:=act
+GITLAB_TOKEN=<your-token> ./push_docker.sh
 ```
-
-Or set the default in:
-
-```text
-config/params.yaml
-```
-
----
-
-## Add a New Policy
-
-1. Create a `PolicyModel` subclass under `policies/`.
-2. Define its observation and action specs in `policies/base_policy.py`.
-3. Use `policies/dummy_policy.py` as a minimal reference.
-4. Register the policy in `policies/__init__.py` via `create_policy()`.
-
-```text
-policies/
-├── base_policy.py      # Policy interface and specs
-├── dummy_policy.py     # Minimal example
-└── your_policy.py      # Your implementation
-```
-
----
-
-> **Tip:** Start with `policy_name:=dummy` to verify ROS topics and preprocessing before loading a real checkpoint.
