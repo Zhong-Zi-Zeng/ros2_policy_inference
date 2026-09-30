@@ -1,15 +1,18 @@
 # Requires nvidia-container-toolkit on the host for the GPU reservations
 # below, and Docker Compose v2.
 #
-#   docker compose up                 # launch inference_node
-#   docker compose run --rm policy-inference bash   # interactive shell
+#   docker compose run --rm policy-inference bash            # act/pi/dummy env, interactive
+#   docker compose run --rm policy-inference-liteflow bash   # liteflow env, interactive
 #
 # ROS_DOMAIN_ID and CHECKPOINT_DIR can be overridden via a .env file or
 # `ROS_DOMAIN_ID=1 CHECKPOINT_DIR=/data/ckpt docker compose up`.
 #
-# Code is not baked into the image — this repo is mounted in and
+# Code is not baked into either image — this repo is mounted in and
 # entrypoint.sh colcon-builds it on every container start, so a `git pull`
 # on the host + a restart always runs whatever's currently checked out.
+# Both services build the same package; only the environment differs (see
+# Dockerfile vs Dockerfile.liteflow), so pick a service by which policy_name
+# you're running, not by editing the command.
 
 services:
   policy-inference:
@@ -32,3 +35,28 @@ services:
     command:
       ["ros2", "launch", "ros2_policy_inference", "inference.launch.py",
        "policy_name:=act"]
+
+  policy-inference-liteflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.liteflow
+    image: liteflow_ros2:latest
+    network_mode: host
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+    volumes:
+      - .:/workspace/src/ros2_policy_inference
+      # Not :ro like the other service: trust_remote_code's AutoModel.from_pretrained writes
+      # a small dynamic-module cache into hf_cache/modules/ on first load even when offline
+      # (see liteflow_delta_deploy/README_FIRST.md section 3).
+      - ${CHECKPOINT_DIR:-./checkpoints}:/checkpoints
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command:
+      ["ros2", "launch", "ros2_policy_inference", "inference.launch.py",
+       "policy_name:=liteflow"]
