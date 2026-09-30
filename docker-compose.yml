@@ -31,4 +31,4 @@ services:
               capabilities: [gpu]
     command:
       ["ros2", "launch", "ros2_policy_inference", "inference.launch.py",
-       "--ros-args", "-p", "policy_name:=act"]
+       "policy_name:=act"]

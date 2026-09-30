@@ -40,25 +40,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# A plain `pip install` here hits two walls: PEP 668's "externally managed"
-# guard (the same one that blocks a bare `pip install` on the host — see
-# README Troubleshooting), and — worse — lerobot's transitive deps want to
-# upgrade packages apt already installed (e.g. `packaging`), which pip
-# refuses since it has no RECORD file for anything dpkg installed. A venv
-# sidesteps both: pip-installed packages land in its own isolated
-# site-packages instead of fighting the system ones. --system-site-packages
-# keeps rclpy/ament_index_python (apt-installed) visible from inside it.
 RUN python3 -m venv --system-site-packages /opt/venv
 ENV PATH="/opt/venv/bin:${PATH}"
 
-# torch first, with the CUDA-enabled wheel, so `pip install lerobot`
-# afterwards sees it already satisfied instead of silently pulling in a
-# CPU-only build as a transitive dependency.
 RUN pip install --no-cache-dir \
         --extra-index-url ${TORCH_INDEX_URL} torch torchvision \
     && pip install --no-cache-dir \
         lerobot${LEROBOT_VERSION:+==${LEROBOT_VERSION}} \
         scipy
+
+# The `colcon` command itself must also resolve to the venv's python: apt's
+# python3-colcon-core runs under the system python, and colcon writes each
+# built executable's shebang from whatever interpreter *it* is running
+# under — so building with the apt one produces scripts that can't see
+# anything just pip-installed above (e.g. `ModuleNotFoundError: scipy` at
+# runtime, despite `pip show scipy` succeeding). A plain `pip install
+# colcon-core` is a no-op here though: --system-site-packages already
+# satisfies it from apt, so pip skips reinstalling and /usr/bin/colcon (the
+# system-python one) stays first on PATH's resolution. --force-reinstall
+# --no-deps writes a fresh venv-python console script while leaving colcon's
+# actual extension packages (colcon-ros, ament_python's task handler, ...)
+# untouched — they're already visible through --system-site-packages.
+RUN pip install --no-cache-dir --force-reinstall --no-deps colcon-core
 
 WORKDIR /workspace
 COPY entrypoint.sh /entrypoint.sh
