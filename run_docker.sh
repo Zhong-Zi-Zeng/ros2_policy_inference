@@ -1,27 +1,33 @@
 #!/usr/bin/env bash
 # Auto-pulls the environment image from the GitLab Package Registry if it
-# isn't already present locally, then runs docker compose.
+# isn't already present locally (and, for liteflow, fetches its checkpoint
+# if missing too), then runs docker compose.
 #
-# Two images share this repo: the default (ROS2 + CUDA + torch + lerobot,
-# for act/pi/dummy) and --liteflow (ROS2 + CUDA + InternVL3/FLOWER, for the
-# liteflow policy — see Dockerfile.liteflow). Pick whichever matches the
-# policy_name you're running. Either way, code is mounted in and
-# colcon-built fresh by entrypoint.sh on every container start, so pulling
-# an older image is fine as long as its Dockerfile hasn't changed. Rebuild +
-# push_docker.sh only when it has.
+# --policy-name picks which policy to launch and, from that, which image:
+# liteflow runs in its own image (ROS2 + CUDA + InternVL3/FLOWER — see
+# Dockerfile.liteflow), everything else (act/pi/dummy) in the shared
+# lerobot one. Either way, code is mounted in and colcon-built fresh by
+# entrypoint.sh on every container start, so pulling an older image is
+# fine as long as its Dockerfile hasn't changed. Rebuild + push_docker.sh
+# only when it has.
 #
 # Usage:
-#   ./run_docker.sh                    # docker compose up, default image
-#   ./run_docker.sh bash                # interactive shell, default image
-#   ./run_docker.sh --liteflow          # docker compose up, liteflow image
-#   ./run_docker.sh --liteflow bash     # interactive shell, liteflow image
+#   ./run_docker.sh --policy-name act        # docker compose run, act policy
+#   ./run_docker.sh --policy-name liteflow   # docker compose run, liteflow policy
+#   ./run_docker.sh --policy-name liteflow bash   # interactive shell instead
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-if [ "${1:-}" = "--liteflow" ]; then
-    shift
+if [ "${1:-}" != "--policy-name" ] || [ -z "${2:-}" ]; then
+    echo "Usage: $0 --policy-name <dummy|act|pi|liteflow> [command...]" >&2
+    exit 1
+fi
+POLICY_NAME="$2"
+shift 2
+
+if [ "$POLICY_NAME" = "liteflow" ]; then
     IMAGE_NAME="liteflow_ros2:latest"
     PACKAGE_NAME="liteflow-ros2-docker"
     SERVICE="policy-inference-liteflow"
@@ -52,8 +58,14 @@ if ! docker image inspect "$IMAGE_NAME" &> /dev/null; then
     gunzip -c "$TMP_TAR" | docker load
 fi
 
+if [ "$POLICY_NAME" = "liteflow" ] && [ ! -s "checkpoints/liteflow/step_20000_ema/config.json" ]; then
+    echo "[run_docker] liteflow checkpoint not found locally, fetching..."
+    ./ros2_policy_inference/policies/liteflow/fetch_weights.sh
+fi
+
 if [ $# -eq 0 ]; then
-    docker compose up "$SERVICE"
+    docker compose run --rm "$SERVICE" \
+        ros2 launch ros2_policy_inference inference.launch.py "policy_name:=$POLICY_NAME"
 else
     docker compose run --rm "$SERVICE" "$@"
 fi

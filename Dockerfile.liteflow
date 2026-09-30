@@ -45,7 +45,9 @@ RUN pip install --no-cache-dir \
     --extra-index-url ${TORCH_INDEX_URL} torch==2.8.0 torchvision==0.23.0
 
 COPY ros2_policy_inference/policies/liteflow/requirements.txt /tmp/liteflow-requirements.txt
-RUN pip install --no-cache-dir -r /tmp/liteflow-requirements.txt
+RUN pip install --no-cache-dir -r /tmp/liteflow-requirements.txt \
+    # scipy is used by inference_node.py itself (not liteflow-specific), same as in Dockerfile.
+    && pip install --no-cache-dir scipy
 
 # See Dockerfile for why colcon itself (not just the packages above) needs to live in the venv:
 # apt's colcon runs under the system python and writes executable shebangs accordingly, making

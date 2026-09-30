@@ -3,9 +3,15 @@
 Run IL / VLA policies with camera and robot observations.
 Publish predicted end-effector actions to `/il/grasp/action`.
 
-## 🚀 Run
+## 🔑 Setup
 
-Set `policy_name` in `config/params.yaml`: `dummy`, `act`, or `pi`.
+Get a GitLab token (scope: `read_api`) from your GitLab profile → Access Tokens, then save it once — scripts pick it up automatically:
+
+```bash
+printf '%s' 'glpat-...' > ~/.gitlab_token && chmod 600 ~/.gitlab_token
+```
+
+## 🚀 Run
 
 > 💡 Start with `dummy` to check inputs and preprocessing without a checkpoint.
 
@@ -14,13 +20,16 @@ Set `policy_name` in `config/params.yaml`: `dummy`, `act`, or `pi`.
 Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
 
 ```bash
-./run_docker.sh        # Start inference
-./run_docker.sh bash   # Open a shell
+./run_docker.sh --policy-name act
+./run_docker.sh --policy-name act bash   # shell instead of launching
 ```
 
-The script pulls `lerobot_ros2` from the GitLab Package Registry if unavailable locally.
-The image contains dependencies only; repository code is mounted and rebuilt at startup.
-After `git pull`, restart the container to apply code changes.
+| Policy | Status |
+|:--|:--|
+| `dummy` | no-op placeholder |
+| `act` | not implemented |
+| `pi` | not implemented |
+| `liteflow` | InternVL3-1B + FLOWER, working |
 
 ### 💻 Local
 
@@ -30,7 +39,7 @@ Requires ROS 2 Jazzy and the policy's dependencies.
 source /opt/ros/jazzy/setup.bash
 colcon build --packages-select ros2_policy_inference
 source install/setup.bash
-ros2 launch ros2_policy_inference inference.launch.py
+ros2 launch ros2_policy_inference inference.launch.py policy_name:=act
 ```
 
 ### 📡 Check output
@@ -67,8 +76,11 @@ ros2 topic echo /il/grasp/action
 
 ### Publish a Docker image
 
-Rebuild and publish only when the Dockerfile or image dependencies change:
+Rebuild and publish only when a Dockerfile or its dependencies change. Needs
+a token with `api` scope (higher than the `read_api` one from Setup) in
+`~/.gitlab_token` or `$GITLAB_TOKEN`:
 
 ```bash
-GITLAB_TOKEN=<your-token> ./push_docker.sh
+./push_docker.sh             # act/pi/dummy image
+./push_docker.sh --liteflow   # liteflow image
 ```
