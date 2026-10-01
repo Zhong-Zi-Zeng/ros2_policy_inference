@@ -3,6 +3,13 @@
 Run IL / VLA policies with camera and robot observations.
 Publish predicted end-effector actions to `/il/grasp/action`.
 
+## 🏗️ Architecture
+
+![ROS 2 Policy Inference Docker architecture](architecture.svg)
+
+Each policy's Python dependencies are isolated in its own Docker image, built from a
+dedicated Dockerfile (see [Publish a Docker image](#publish-a-docker-image)). Every image
+mounts the same source code and checkpoints at container start.
 ## 🔑 Setup
 
 Get a GitLab token (scope: `read_api`) from your GitLab profile → Access Tokens, then save it once — scripts pick it up automatically:
