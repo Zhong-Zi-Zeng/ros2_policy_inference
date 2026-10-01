@@ -38,7 +38,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         libgl1 \
         libglib2.0-0 \
+        ros-jazzy-rmw-cyclonedds-cpp \
     && rm -rf /var/lib/apt/lists/*
+
+# Avoids Fast-DDS's same-host shared-memory transport, which silently drops
+# everything since the container's /dev/shm isn't the host's.
+ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 
 RUN python3 -m venv --system-site-packages /opt/venv
 ENV PATH="/opt/venv/bin:${PATH}"
@@ -49,18 +54,7 @@ RUN pip install --no-cache-dir \
         lerobot${LEROBOT_VERSION:+==${LEROBOT_VERSION}} \
         scipy
 
-# The `colcon` command itself must also resolve to the venv's python: apt's
-# python3-colcon-core runs under the system python, and colcon writes each
-# built executable's shebang from whatever interpreter *it* is running
-# under — so building with the apt one produces scripts that can't see
-# anything just pip-installed above (e.g. `ModuleNotFoundError: scipy` at
-# runtime, despite `pip show scipy` succeeding). A plain `pip install
-# colcon-core` is a no-op here though: --system-site-packages already
-# satisfies it from apt, so pip skips reinstalling and /usr/bin/colcon (the
-# system-python one) stays first on PATH's resolution. --force-reinstall
-# --no-deps writes a fresh venv-python console script while leaving colcon's
-# actual extension packages (colcon-ros, ament_python's task handler, ...)
-# untouched — they're already visible through --system-site-packages.
+# colcon itself must resolve to the venv's python, or built scripts can't see pip-installed deps.
 RUN pip install --no-cache-dir --force-reinstall --no-deps colcon-core
 
 WORKDIR /workspace

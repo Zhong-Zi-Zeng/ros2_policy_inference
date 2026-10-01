@@ -33,7 +33,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         libgl1 \
         libglib2.0-0 \
+        ros-jazzy-rmw-cyclonedds-cpp \
     && rm -rf /var/lib/apt/lists/*
+
+# See Dockerfile for why (Fast-DDS's same-host SHM transport breaks here).
+ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 
 # See Dockerfile for why this needs a --system-site-packages venv (PEP 668 + apt/pip conflicts).
 RUN python3 -m venv --system-site-packages /opt/venv
