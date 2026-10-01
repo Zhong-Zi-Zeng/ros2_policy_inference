@@ -10,9 +10,9 @@
 # the container at runtime, same as the main Dockerfile. entrypoint.sh colcon-builds whatever's
 # currently mounted every time the container starts.
 #
-#   docker build -f Dockerfile.liteflow -t liteflow_ros2:latest .
-#   ./policies/liteflow/fetch_weights.sh   # populate ./checkpoints/liteflow/ first
-#   docker compose run --rm policy-inference-liteflow
+#   docker build -f docker/Dockerfile.liteflow -t liteflow_ros2:latest .   # run from repo root
+#   ./ros2_policy_inference/policies/liteflow/fetch_weights.sh   # populate ./checkpoints/liteflow/ first
+#   docker compose -f docker/docker-compose.yml run --rm policy-inference-liteflow
 
 FROM ros:jazzy-ros-base
 SHELL ["/bin/bash", "-c"]
@@ -59,7 +59,7 @@ RUN pip install --no-cache-dir -r /tmp/liteflow-requirements.txt \
 RUN pip install --no-cache-dir --force-reinstall --no-deps colcon-core
 
 WORKDIR /workspace
-COPY entrypoint.sh /entrypoint.sh
+COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]

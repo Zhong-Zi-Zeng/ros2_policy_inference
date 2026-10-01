@@ -38,7 +38,7 @@ if [ -z "${GITLAB_TOKEN:-}" ]; then
 fi
 
 echo "[push_docker] Building $IMAGE_NAME..."
-docker compose build "$SERVICE"
+docker compose -f docker/docker-compose.yml build "$SERVICE"
 
 TMP_TAR="$(mktemp --suffix=.tar.gz)"
 trap 'rm -f "$TMP_TAR"' EXIT

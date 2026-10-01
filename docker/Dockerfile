@@ -6,15 +6,10 @@
 # whatever's currently mounted every time the container starts, so a
 # `git pull` on the host + container restart always runs the latest code.
 #
-#   docker build -t lerobot_ros2:latest .
-#   docker run -it --network host --gpus all \
-#     -e ROS_DOMAIN_ID=0 \
-#     -v $(pwd):/workspace/src/ros2_policy_inference \
-#     -v /path/to/checkpoints:/checkpoints:ro \
-#     lerobot_ros2:latest
+#   docker build -f docker/Dockerfile -t lerobot_ros2:latest .   # run from repo root
 #
 # or: ./run_docker.sh (auto-pulls a prebuilt image from the GitLab Package
-# Registry if one isn't present locally) / docker compose up
+# Registry if one isn't present locally) / docker compose -f docker/docker-compose.yml up
 
 FROM ros:jazzy-ros-base
 SHELL ["/bin/bash", "-c"]
@@ -22,7 +17,7 @@ SHELL ["/bin/bash", "-c"]
 # Match TORCH_INDEX_URL to whatever CUDA build your host's NVIDIA driver
 # actually supports, and pin LEROBOT_VERSION to whatever you trained /
 # received the checkpoint with — e.g.:
-#   docker build --build-arg LEROBOT_VERSION=0.1.0 .
+#   docker build --build-arg LEROBOT_VERSION=0.1.0 -f docker/Dockerfile .
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu121
 ARG LEROBOT_VERSION=
 
@@ -58,7 +53,7 @@ RUN pip install --no-cache-dir \
 RUN pip install --no-cache-dir --force-reinstall --no-deps colcon-core
 
 WORKDIR /workspace
-COPY entrypoint.sh /entrypoint.sh
+COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]

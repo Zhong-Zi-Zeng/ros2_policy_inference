@@ -47,7 +47,7 @@ if ! docker image inspect "$IMAGE_NAME" &> /dev/null; then
     if [ -z "${GITLAB_TOKEN:-}" ]; then
         echo "[ERROR] No GitLab token found. Either export \$GITLAB_TOKEN, save one to"
         echo "        ~/.gitlab_token (scope: read_api), or build locally instead:"
-        echo "        docker compose build $SERVICE"
+        echo "        docker compose -f docker/docker-compose.yml build $SERVICE"
         exit 1
     fi
 
@@ -64,8 +64,8 @@ if [ "$POLICY_NAME" = "liteflow" ] && [ ! -s "checkpoints/liteflow/step_20000_em
 fi
 
 if [ $# -eq 0 ]; then
-    docker compose run --rm "$SERVICE" \
+    docker compose -f docker/docker-compose.yml run --rm "$SERVICE" \
         ros2 launch ros2_policy_inference inference.launch.py "policy_name:=$POLICY_NAME"
 else
-    docker compose run --rm "$SERVICE" "$@"
+    docker compose -f docker/docker-compose.yml run --rm "$SERVICE" "$@"
 fi
