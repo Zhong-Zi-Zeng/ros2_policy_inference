@@ -20,4 +20,7 @@ def create_policy(name: str) -> PolicyModel:
     if name == "liteflow":
         from .liteflow.liteflow_policy import LiteFlowPolicyModel
         return LiteFlowPolicyModel()
-    raise ValueError(f"unknown policy_name '{name}' (options: dummy, act, pi, liteflow)")
+    if name == "diffusion":
+        from .diffusion.diffusion_policy import DiffusionPolicyModel
+        return DiffusionPolicyModel()
+    raise ValueError(f"unknown policy_name '{name}' (options: dummy, act, pi, liteflow, diffusion)")

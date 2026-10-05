@@ -19,6 +19,11 @@ ACTION_DIM = 7
 class PolicyModel(ABC):
     """Interface every IL/VLA policy backend must implement."""
 
+    # Set by a backend whose actions are tied to a fixed control period (e.g.
+    # per-camera-frame deltas): the node then ticks at this rate instead of
+    # the inference_rate_hz parameter. None = use the parameter.
+    inference_rate_hz = None
+
     def reset(self):
         """Called once when the node starts. Override to reset any internal
         state (e.g. an action-chunking buffer or recurrent hidden state)

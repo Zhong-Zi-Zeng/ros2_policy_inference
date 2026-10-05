@@ -1,0 +1,24 @@
+# Which checkpoint to load and Diffusion-Policy-specific inference knobs. Not a ROS param file
+# (this policy is loaded in-process by diffusion_policy.py, not launched as its own node), same
+# as policies/liteflow/config.yaml.
+
+# Mounted read-only from the host (docker-compose.yml's checkpoints volume): the lerobot
+# checkpoint directory holding config.json, model.safetensors and the pre/post-processors.
+# Copy the bundle's policy/ folder to <repo>/checkpoints/diffusion/fan_grasp_diffusion_v1.
+checkpoint_dir: /checkpoints/diffusion/fan_grasp_diffusion_v1
+
+device: cuda
+
+# Carried through the processor pipeline for parity with training batches; the diffusion policy
+# itself does not condition on language.
+task: "pick up the fan by its handle"
+
+# Overrides config/params.yaml's inference_rate_hz while this policy runs. Each action is the
+# motion recorded between two consecutive camera frames of the training data (labelled fps=30),
+# so ticking at any other rate scales the arm's speed by the same factor: 10 Hz would move it at a
+# third of the demonstrated speed and stretch each 8-action chunk from 0.27 s to 0.8 s open-loop.
+inference_rate_hz: 30.0
+
+# Dummy inferences at startup to pay the first-call cost (CUDA context, cuDNN autotune) before the
+# robot moves: ~226 ms on the first sampler call versus ~62 ms steady state on an RTX 4070 Ti SUPER.
+warmup_iters: 3

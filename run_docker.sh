@@ -5,14 +5,14 @@
 #
 # --policy-name picks which policy to launch and, from that, which image:
 # liteflow runs in its own image (ROS2 + CUDA + InternVL3/FLOWER — see
-# Dockerfile.liteflow), everything else (act/pi/dummy) in the shared
+# Dockerfile.liteflow), everything else (act/pi/dummy/diffusion) in the shared
 # lerobot one. Either way, code is mounted in and colcon-built fresh by
 # entrypoint.sh on every container start, so pulling an older image is
 # fine as long as its Dockerfile hasn't changed. Rebuild + push_docker.sh
 # only when it has.
 #
 # Usage:
-#   ./run_docker.sh --policy-name act        # docker compose run, act policy
+#   ./run_docker.sh --policy-name diffusion  # docker compose run, diffusion policy
 #   ./run_docker.sh --policy-name liteflow   # docker compose run, liteflow policy
 #   ./run_docker.sh --policy-name liteflow bash   # interactive shell instead
 set -euo pipefail
