@@ -8,6 +8,10 @@ setup(
     name=package_name,
     version="0.1.0",
     packages=find_packages(exclude=["test"]),
+    # Policies load their config.yaml from next to their own module
+    # (os.path.dirname(__file__)); without this, colcon installs only the .py
+    # files and the policy fails to import.
+    package_data={package_name: ["policies/*/config.yaml"]},
     data_files=[
         ("share/ament_index/resource_index/packages",
          [f"resource/{package_name}"]),
