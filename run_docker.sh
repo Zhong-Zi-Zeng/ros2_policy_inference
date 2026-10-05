@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Auto-pulls the environment image from the GitLab Package Registry if it
-# isn't already present locally (and, for liteflow, fetches its checkpoint
+# isn't already present locally (and, for liteflow / pi, fetches its checkpoint
 # if missing too), then runs docker compose.
 #
 # --policy-name picks which policy to launch and, from that, which image:
@@ -61,6 +61,11 @@ fi
 if [ "$POLICY_NAME" = "liteflow" ] && [ ! -s "checkpoints/liteflow/step_20000_ema/config.json" ]; then
     echo "[run_docker] liteflow checkpoint not found locally, fetching..."
     ./ros2_policy_inference/policies/liteflow/fetch_weights.sh
+fi
+
+if [ "$POLICY_NAME" = "pi" ] && [ ! -s "checkpoints/pi05_grasp_fan/pretrained_model/config.json" ]; then
+    echo "[run_docker] pi05 checkpoint not found locally, fetching..."
+    ./ros2_policy_inference/policies/pi/fetch_weights.sh
 fi
 
 if [ $# -eq 0 ]; then
