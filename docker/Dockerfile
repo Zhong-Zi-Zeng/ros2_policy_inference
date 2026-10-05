@@ -46,7 +46,8 @@ ENV PATH="/opt/venv/bin:${PATH}"
 RUN pip install --no-cache-dir \
         --extra-index-url ${TORCH_INDEX_URL} torch torchvision \
     && pip install --no-cache-dir \
-        lerobot${LEROBOT_VERSION:+==${LEROBOT_VERSION}} \
+        "lerobot[pi]${LEROBOT_VERSION:+==${LEROBOT_VERSION}}" \
+        "transformers>=5.4.0,<5.6.0" \
         scipy
 
 # colcon itself must resolve to the venv's python, or built scripts can't see pip-installed deps.
