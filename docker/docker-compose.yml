@@ -2,8 +2,11 @@
 # below, and Docker Compose v2. Invoked via ../run_docker.sh / ../push_docker.sh,
 # or directly with `docker compose -f docker/docker-compose.yml ...` from the repo root.
 #
-# ROS_DOMAIN_ID and CHECKPOINT_DIR can be overridden via a .env file or
+# ROS_DOMAIN_ID and CHECKPOINT_DIR can be overridden via a repo-root .env file or
 # `ROS_DOMAIN_ID=1 CHECKPOINT_DIR=/data/ckpt docker compose -f docker/docker-compose.yml up`.
+# run_docker.sh handles both for you. When calling compose directly, note that
+# relative paths here resolve against docker/, not the repo root: pass
+# `--env-file .env` for the root .env, and give CHECKPOINT_DIR as an absolute path.
 #
 # Code is not baked into either image — this repo is mounted in and
 # entrypoint.sh colcon-builds it on every container start, so a `git pull`

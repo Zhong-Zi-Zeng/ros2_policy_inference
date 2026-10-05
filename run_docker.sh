@@ -63,9 +63,25 @@ if [ "$POLICY_NAME" = "liteflow" ] && [ ! -s "checkpoints/liteflow/step_20000_em
     ./ros2_policy_inference/policies/liteflow/fetch_weights.sh
 fi
 
+# Compose's project directory is docker/ (where the compose file lives), so
+# it would neither read a repo-root .env nor resolve a relative CHECKPOINT_DIR
+# against the repo root. Pass the .env explicitly and make CHECKPOINT_DIR
+# absolute here (a shell-set value wins over .env, same as compose).
+COMPOSE=(docker compose -f docker/docker-compose.yml)
+if [ -f .env ]; then
+    COMPOSE+=(--env-file .env)
+    if [ -z "${CHECKPOINT_DIR:-}" ]; then
+        CHECKPOINT_DIR="$(sed -n 's/^[[:space:]]*CHECKPOINT_DIR[[:space:]]*=[[:space:]]*//p' .env \
+            | tail -n 1 | sed -e 's/[[:space:]]*$//' -e 's/^["'\'']//' -e 's/["'\'']$//')"
+    fi
+fi
+if [ -n "${CHECKPOINT_DIR:-}" ]; then
+    export CHECKPOINT_DIR="$(realpath -m -- "$CHECKPOINT_DIR")"
+fi
+
 if [ $# -eq 0 ]; then
-    docker compose -f docker/docker-compose.yml run --rm "$SERVICE" \
+    "${COMPOSE[@]}" run --rm "$SERVICE" \
         ros2 launch ros2_policy_inference inference.launch.py "policy_name:=$POLICY_NAME"
 else
-    docker compose -f docker/docker-compose.yml run --rm "$SERVICE" "$@"
+    "${COMPOSE[@]}" run --rm "$SERVICE" "$@"
 fi
