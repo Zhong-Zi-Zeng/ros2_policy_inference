@@ -58,11 +58,6 @@ if ! docker image inspect "$IMAGE_NAME" &> /dev/null; then
     gunzip -c "$TMP_TAR" | docker load
 fi
 
-if [ "$POLICY_NAME" = "liteflow" ] && [ ! -s "checkpoints/liteflow/step_20000_ema/config.json" ]; then
-    echo "[run_docker] liteflow checkpoint not found locally, fetching..."
-    ./ros2_policy_inference/policies/liteflow/fetch_weights.sh
-fi
-
 # Compose's project directory is docker/ (where the compose file lives), so
 # it would neither read a repo-root .env nor resolve a relative CHECKPOINT_DIR
 # against the repo root. Pass the .env explicitly and make CHECKPOINT_DIR
@@ -77,6 +72,13 @@ if [ -f .env ]; then
 fi
 if [ -n "${CHECKPOINT_DIR:-}" ]; then
     export CHECKPOINT_DIR="$(realpath -m -- "$CHECKPOINT_DIR")"
+fi
+
+# fetch_weights.sh downloads into $CHECKPOINT_DIR/liteflow (default
+# checkpoints/liteflow), i.e. the same folder compose mounts at /checkpoints.
+if [ "$POLICY_NAME" = "liteflow" ] && [ ! -s "${CHECKPOINT_DIR:-checkpoints}/liteflow/step_20000_ema/config.json" ]; then
+    echo "[run_docker] liteflow checkpoint not found in ${CHECKPOINT_DIR:-checkpoints}/liteflow, fetching..."
+    ./ros2_policy_inference/policies/liteflow/fetch_weights.sh
 fi
 
 if [ $# -eq 0 ]; then

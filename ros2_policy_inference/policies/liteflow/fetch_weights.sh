@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Downloads the LiteFlow checkpoint + offline InternVL3-1B snapshot from the GitLab Package
-# Registry into ./checkpoints/liteflow/ (repo root), where docker-compose.yml's checkpoints
-# volume mounts them into the container at /checkpoints/liteflow/ (see config.yaml).
+# Registry into $CHECKPOINT_DIR/liteflow/ (default: ./checkpoints/liteflow/ at the repo root),
+# where docker-compose.yml's checkpoints volume mounts them into the container at
+# /checkpoints/liteflow/ (see config.yaml). Give CHECKPOINT_DIR as an absolute path;
+# run_docker.sh already does.
 #
 # Usage:
 #   ./fetch_weights.sh [checkpoint_version]   # default: step_20000_ema
@@ -10,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-OUT_DIR="$REPO_ROOT/checkpoints/liteflow"
+OUT_DIR="${CHECKPOINT_DIR:-$REPO_ROOT/checkpoints}/liteflow"
 
 CKPT_VERSION="${1:-step_20000_ema}"
 HF_VERSION="internvl3-1b"
