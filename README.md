@@ -35,7 +35,7 @@ Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-nat
 |:--|:--|
 | `dummy` | no-op placeholder |
 | `act` | not implemented |
-| `pi` | not implemented |
+| `pi` | π₀.₅ (pi05) LeRobot checkpoint, working |
 | `liteflow` | InternVL3-1B + FLOWER, working |
 
 ### 💻 Local
