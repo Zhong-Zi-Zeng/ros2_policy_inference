@@ -12,7 +12,7 @@ def create_policy(name: str) -> PolicyModel:
         from .dummy_policy import DummyPolicyModel
         return DummyPolicyModel()
     if name == "act":
-        from .act_policy import ACTPolicyModel
+        from .act.act_policy import ACTPolicyModel
         return ACTPolicyModel()
     if name == "pi":
         from .pi_policy import PIPolicyModel

@@ -34,7 +34,7 @@ Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-nat
 | Policy | Status | Image | Rate |
 |:--|:--|:--|:--|
 | `dummy` | no-op placeholder | `lerobot_ros2` | 10 Hz |
-| `act` | not implemented | `lerobot_ros2` | 10 Hz |
+| `act` | LeRobot ACT (fan grasp), working | `lerobot_ros2` | 30 Hz |
 | `pi` | not implemented | `lerobot_ros2` | 10 Hz |
 | `liteflow` | InternVL3-1B + FLOWER, working | `liteflow_ros2` | 10 Hz |
 | `diffusion` | LeRobot Diffusion Policy (fan grasp), working | `lerobot_ros2` | 30 Hz |
@@ -56,6 +56,7 @@ Set `CHECKPOINT_DIR` in the environment or a repo-root `.env` to use another fol
 |:--|:--|:--|
 | `liteflow` | `checkpoints/liteflow/{step_20000_ema,hf_cache}` | fetched automatically by `run_docker.sh` (needs GitLab access) |
 | `diffusion` | `checkpoints/diffusion/fan_grasp_diffusion_v1` | copy the `policy/` folder of the `fan_grasp_diffusion_v1` release bundle |
+| `act` | `checkpoints/act/fan_grasp_act_v1` | copy `Robot_Friday/checkpoints/checkpoint_act/375000/pretrained_model/` |
 
 Each policy's checkpoint path and inference knobs are in `policies/<name>/config.yaml`.
 
@@ -94,7 +95,7 @@ ros2 topic echo /il/grasp/action
 |:--|:--|:--|
 | `/il/grasp/action` | `Float64MultiArray` | `[dx, dy, dz, drx, dry, drz, gripper]` |
 
-For `diffusion`: position delta in metres and rotation delta as an axis-angle in radians, both in the
+For `act` and `diffusion`: position delta in metres and rotation delta as an axis-angle in radians, both in the
 world frame (apply the rotation by left multiplication, `R_next = R(drot) · R_now`), one action per
 1/30 s; gripper `1` = open, `0` = closed, threshold at `0.5`. Nothing in this repo subscribes to the
 topic yet — the consumer that turns actions into arm motion is still to be written.
