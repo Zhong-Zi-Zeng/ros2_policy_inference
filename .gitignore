@@ -6,4 +6,4 @@ __pycache__/
 checkpoints/
 
 # Recorded ROS 2 bags used for offline testing (multi-GB)
-Isaac_sim_env/
+bags/
