@@ -22,22 +22,69 @@ printf '%s' 'glpat-...' > ~/.gitlab_token && chmod 600 ~/.gitlab_token
 
 > 💡 Start with `dummy` to check inputs and preprocessing without a checkpoint.
 
+### 🔀 Choosing a policy
+
+Every way of running the node takes **one policy name**; nothing else needs editing to switch.
+
+| Policy | Status | Image | Rate | Checkpoint needed |
+|:--|:--|:--|:--|:--|
+| `dummy` | no-op placeholder | `lerobot_ros2` | 10 Hz | no |
+| `act` | LeRobot ACT (fan grasp), working | `lerobot_ros2` | 30 Hz | `checkpoints/act/fan_grasp_act_v1` |
+| `diffusion` | LeRobot Diffusion Policy (fan grasp), working | `lerobot_ros2` | 30 Hz | `checkpoints/diffusion/fan_grasp_diffusion_v1` |
+| `diffusion_rtc` | same model + guided Real-Time Chunking, working | `lerobot_ros2` | 30 Hz | same as `diffusion` |
+| `liteflow` | InternVL3-1B + FLOWER, working | `liteflow_ros2` | 10 Hz | `checkpoints/liteflow/...` (auto-fetched) |
+| `pi` | not implemented | `lerobot_ros2` | 10 Hz | — |
+
+Where the name goes:
+
+| How you run it | Where to put the policy name |
+|:--|:--|
+| Docker, launch directly | `./run_docker.sh --policy-name <policy>` |
+| Docker, shell first | `./run_docker.sh --policy-name <policy> bash`, then `ros2 launch ... policy_name:=<policy>` inside |
+| Local (no Docker) | `ros2 launch ros2_policy_inference inference.launch.py policy_name:=<policy>` |
+
+What follows from the name automatically:
+
+- **Image**: `run_docker.sh` picks `liteflow_ros2` for `liteflow` and `lerobot_ros2` for everything
+  else. Use the same `--policy-name` for the container as in the `ros2 launch` line inside it, or
+  `liteflow` will be missing its dependencies.
+- **Checkpoint and inference settings**: read from `policies/<policy>/config.yaml`
+  (e.g. ACT's temporal ensembling, Diffusion's DDIM steps); `diffusion_rtc` shares
+  `policies/diffusion/config.yaml`.
+- **Rate**: `act`, `diffusion` and `diffusion_rtc` run at 30 Hz, the rate their training data was recorded at,
+  overriding `inference_rate_hz` in `config/params.yaml`. The node logs
+  `policy '<policy>' requires 30.0 Hz` when this happens.
+- **`diffusion` vs `diffusion_rtc`**: same checkpoint and settings. `diffusion` is lerobot's
+  synchronous chunking (one ~60 ms pause every 8 actions). `diffusion_rtc` adds guided Real-Time
+  Chunking at inference: the next chunk is computed in the background and joined smoothly to the
+  current one, so the node never pauses. Its startup log says `RTC (guided, ...)` and it logs an
+  `RTC: ... stalls 0` summary every 100 chunks; tune it in the `rtc:` block of
+  `policies/diffusion/config.yaml`.
+
+Without a name, `ros2 launch` and `config/params.yaml` default to `dummy`.
+
+**Switching**: stop the running node first (Ctrl+C, or `docker stop <container>`; list them with
+`docker ps`), then start the new one. All policies publish on the same `/il/grasp/action`, so two
+nodes running at once interleave their actions.
+
 ### 🐳 Docker
 
 Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
 
 ```bash
-./run_docker.sh --policy-name diffusion
-./run_docker.sh --policy-name diffusion bash   # shell instead of launching
+./run_docker.sh --policy-name act          # or: diffusion, diffusion_rtc, liteflow, dummy
+./run_docker.sh --policy-name act bash     # shell in the container instead of launching
 ```
 
-| Policy | Status | Image | Rate |
-|:--|:--|:--|:--|
-| `dummy` | no-op placeholder | `lerobot_ros2` | 10 Hz |
-| `act` | LeRobot ACT (fan grasp), working | `lerobot_ros2` | 30 Hz |
-| `pi` | not implemented | `lerobot_ros2` | 10 Hz |
-| `liteflow` | InternVL3-1B + FLOWER, working | `liteflow_ros2` | 10 Hz |
-| `diffusion` | LeRobot Diffusion Policy (fan grasp), working | `lerobot_ros2` | 30 Hz |
+From that shell, build and launch by hand. The repo is mounted at `/workspace/src/ros2_policy_inference`,
+so code edits on the host are picked up by the rebuild:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+colcon build --packages-select ros2_policy_inference
+source install/setup.bash
+ros2 launch ros2_policy_inference inference.launch.py policy_name:=act
+```
 
 `run_docker.sh` pulls the image from the GitLab Package Registry if it isn't present locally. Off the
 lab network, build it instead (only public sources are needed); `run_docker.sh` then uses the local one:
@@ -62,20 +109,76 @@ Each policy's checkpoint path and inference knobs are in `policies/<name>/config
 
 ### 💻 Local
 
-Requires ROS 2 Jazzy and the policy's dependencies.
+> ⚠️ Only for a machine with **ROS 2 Jazzy installed natively** (`/opt/ros/jazzy` exists). Without it
+> these commands fail with `/opt/ros/jazzy/setup.bash: No such file or directory` and
+> `ros2: command not found` — use [Docker](#-docker) instead: `./run_docker.sh --policy-name <policy>`
+> already runs all four steps below inside the container. Activating a conda env (e.g. `lerobot312`)
+> does not provide ROS.
+
+Requires ROS 2 Jazzy and the policy's dependencies (for `act`/`diffusion`: torch + lerobot 0.6.2, see
+`docker/Dockerfile`).
 
 ```bash
 source /opt/ros/jazzy/setup.bash
 colcon build --packages-select ros2_policy_inference
 source install/setup.bash
-ros2 launch ros2_policy_inference inference.launch.py policy_name:=diffusion
+ros2 launch ros2_policy_inference inference.launch.py policy_name:=act   # or: diffusion, diffusion_rtc, liteflow, dummy
 ```
+
+`checkpoint_dir` in `policies/<policy>/config.yaml` is a container path (`/checkpoints/...`). Outside
+Docker, change it to the checkpoint's path on your machine, e.g.
+`<repo>/checkpoints/act/fan_grasp_act_v1`.
+
+### 🎞️ Test with a recorded bag
+
+Feeds recorded robot topics to the node, so a policy can be checked without the robot or the sim.
+The bag only replays inputs; a policy node must be running to turn them into actions.
+All commands from the repo root:
+
+```bash
+# 1. the policy node - SKIP if one is already running (see "Docker" above; `docker ps` lists it).
+#    Starting a second one makes two nodes publish on /il/grasp/action.
+./run_docker.sh --policy-name act
+
+# 2. play the bag on a loop, only the topics the node subscribes to
+docker run --rm -it --name bag_player --network host --entrypoint bash \
+  -v "$PWD/bags/fan_insertion_2026-09-22:/bag:ro" lerobot_ros2:latest -c \
+  'source /opt/ros/jazzy/setup.bash && ros2 bag play /bag --loop --topics \
+     /camera_L/color/image_raw/compressed /camera_L/depth/aligned_depth_to_color \
+     /left_arm/joint_states /left_arm/tcp_pose_world /left_ft/wrench_compensated'
+
+# 3. watch the actions (or just read the node's terminal, which logs every action)
+docker run --rm -it --network host --entrypoint bash lerobot_ros2:latest -c \
+  'source /opt/ros/jazzy/setup.bash && ros2 topic echo /il/grasp/action'
+```
+
+Bags live in `bags/` (git-ignored). Until the bag starts, the node's terminal repeats
+`waiting for all observation topics...` / `no publisher found for ...` — that is expected, not an
+error; once it plays, the node logs `action: [...]` at the policy's rate. `fan_insertion_2026-09-22`
+(17 s) was recorded during fan *insertion*, so it checks the pipeline (topics → preprocessing →
+model → action), not grasp quality; `--loop` also jumps the pose back every 17 s.
 
 ### 📡 Check output
 
+With ROS 2 Jazzy installed natively:
+
 ```bash
+source /opt/ros/jazzy/setup.bash
 ros2 topic echo /il/grasp/action
 ```
+
+> ⚠️ `ros2` needs ROS 2 on the machine. Without it (`ros2: command not found`), run the same command
+> in a throwaway container from the policy image — it uses host networking, so it sees the node's
+> topic:
+>
+> ```bash
+> docker run --rm -it --network host --entrypoint bash lerobot_ros2:latest -c \
+>   'source /opt/ros/jazzy/setup.bash && ros2 topic echo /il/grasp/action'
+> ```
+>
+> Or open a shell in the running policy container (`docker ps` lists it) and run it there:
+> `docker exec -it <container> bash`, then `source /opt/ros/jazzy/setup.bash && ros2 topic echo /il/grasp/action`.
+> The node's own terminal also logs every action as `action: [...]`.
 
 ## 🔌 ROS Interface
 
@@ -95,7 +198,7 @@ ros2 topic echo /il/grasp/action
 |:--|:--|:--|
 | `/il/grasp/action` | `Float64MultiArray` | `[dx, dy, dz, drx, dry, drz, gripper]` |
 
-For `act` and `diffusion`: position delta in metres and rotation delta as an axis-angle in radians, both in the
+For `act`, `diffusion` and `diffusion_rtc`: position delta in metres and rotation delta as an axis-angle in radians, both in the
 world frame (apply the rotation by left multiplication, `R_next = R(drot) · R_now`), one action per
 1/30 s; gripper `1` = open, `0` = closed, threshold at `0.5`. Nothing in this repo subscribes to the
 topic yet — the consumer that turns actions into arm motion is still to be written.
@@ -119,6 +222,6 @@ a token with `api` scope (higher than the `read_api` one from Setup) in
 `~/.gitlab_token` or `$GITLAB_TOKEN`:
 
 ```bash
-./push_docker.sh             # act/pi/dummy/diffusion image
+./push_docker.sh             # act/pi/dummy/diffusion/diffusion_rtc image
 ./push_docker.sh --liteflow   # liteflow image
 ```
