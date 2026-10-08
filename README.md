@@ -203,6 +203,99 @@ world frame (apply the rotation by left multiplication, `R_next = R(drot) · R_n
 1/30 s; gripper `1` = open, `0` = closed, threshold at `0.5`. Nothing in this repo subscribes to the
 topic yet — the consumer that turns actions into arm motion is still to be written.
 
+## 🤖 Real robot
+
+Checklist for running the fan-grasp policies (`act`, `diffusion_rtc`, `diffusion`) on the robot.
+They were trained on the RS-M90E7A left arm with its wrist camera (`camera_L`) in the fan-grasp
+scene; on a different arm, camera mount or scene they may not transfer even if everything below is
+wired correctly. None of them has run on hardware yet.
+
+### 1. Weights
+
+Not in git (see [Checkpoints](#-checkpoints)); copy them in with their checksum file and verify:
+
+```text
+checkpoints/act/fan_grasp_act_v1/                # 197 MB, 7 files
+checkpoints/diffusion/fan_grasp_diffusion_v1/    # 1 GB, 7 files (diffusion and diffusion_rtc)
+checkpoints/SHA256SUMS
+```
+
+```bash
+cd checkpoints && sha256sum -c SHA256SUMS      # all 14 files: OK
+```
+
+### 2. Docker image
+
+Rebuild it once. The Dockerfile pins lerobot 0.6.2 and torch 2.11 / CUDA 13, which these checkpoints
+need (older lerobot rejects their `config.json`), and `run_docker.sh` never replaces an existing
+local `lerobot_ros2` image:
+
+```bash
+docker compose -f docker/docker-compose.yml build policy-inference
+```
+
+Needs an NVIDIA driver ≥ 580 (`nvidia-smi`). GPU memory: `act` ~0.3 GB, `diffusion`/`diffusion_rtc`
+~1.2 GB (measured on an RTX 4070 Ti SUPER).
+
+### 3. Inputs the robot must publish
+
+The node waits until **all five** [input topics](#inputs) have arrived before its first action, so
+depth, TCP pose and F/T must be published even though `act`/`diffusion` only use the image, the joints
+and the gripper.
+
+- **Camera**: the wrist camera as JPEG `CompressedImage`, at **≥ 30 fps** (subscribed BEST_EFFORT).
+- **Joints**: exactly **6 arm positions in radians, in the training order** (`joint_0`…`joint_5`).
+  They are read in published order (`msg.position`), not matched by name — a different order or an
+  extra gripper joint breaks the state silently or fails the 7-D state check.
+- **ROS**: same `ROS_DOMAIN_ID` as the robot (default 0; set it in a repo-root `.env`). The container
+  uses host networking and CycloneDDS.
+
+### 4. Start pose
+
+Start inside the training range, ideally where the demonstrations started; far outside it the
+policies extrapolate. Joint ranges in the training data (radians):
+
+| `joint_0` | `joint_1` | `joint_2` | `joint_3` | `joint_4` | `joint_5` |
+|:--|:--|:--|:--|:--|:--|
+| −0.03 … 0.12 | −0.48 … 0.60 | −1.57 … 0.46 | 1.76 … 3.85 | 3.09 … 3.31 | −1.66 … −1.52 |
+
+### 5. Applying the actions
+
+Nothing in this repo moves the arm: the robot-side controller must apply every message on
+`/il/grasp/action` (7 values, 30 Hz) the way the training data was recorded:
+
+- `[0:3]` position delta in metres, **world frame**, at the **TCP = Link_6 + 0.2204 m along Link_6's
+  z axis** (`ee_pos_offset` in `config/params.yaml`). Applying it at a different point gives
+  few-mm errors whenever the tool rotates.
+- `[3:6]` rotation delta as a rotation vector, world frame, **left-multiplied**:
+  `R_next = R(drot) · R_now`.
+- `[6]` gripper: **≥ 0.5 = open, < 0.5 = close**. The node feeds its own last gripper command back
+  as state and starts open (`initial_gripper_open`).
+- One message = one 1/30 s of motion. Apply every message; applying them at another rate changes
+  the arm's speed by the same factor. Typical steps are ~0.5 mm; the largest in training was 5.2 mm
+  and 0.0089 rad.
+
+### 6. Which policy
+
+```bash
+./run_docker.sh --policy-name act            # first choice
+./run_docker.sh --policy-name diffusion_rtc  # diffusion, smooth and a steady 30 Hz
+```
+
+Avoid plain `diffusion` on the robot: its ~60 ms pause per chunk makes the node skip timer ticks, so
+it publishes at only ~22 Hz and the arm moves ~26% slower than demonstrated. Stop the running node
+before switching, or two nodes publish on `/il/grasp/action` at once.
+
+### 7. First run
+
+1. **Without moving the arm**: run the node against the robot's topics (or a
+   recorded bag, see *Test with a recorded bag* above) and [check the output](#-check-output): about 30
+   messages/s, small values, gripper at 1. The startup log should show `loaded act ...` (or
+   `loaded diffusion ...`) and `requires 30.0 Hz`; `diffusion_rtc` also logs `RTC (guided ...)` at
+   startup and `RTC: ... stalls 0` every 100 chunks.
+2. **On the robot**: reduced speed limits, e-stop within reach, short runs. Watch for the arm
+   drifting off the demonstrated path the longer it runs; that is the failure mode of delta actions.
+
 ## 🛠️ Development
 
 ### Add a policy
