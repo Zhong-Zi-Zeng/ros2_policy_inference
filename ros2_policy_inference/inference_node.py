@@ -51,6 +51,11 @@ _DEFAULT_PARAMS = dict(
     # the node logs its state and the next handoff_log_actions actions.
     handoff_topic="/il/grasp/handoff",
     handoff_log_actions=10,
+    # At a hand-off, reset the policy (action queue / chunks, observation
+    # history) and the fed-back gripper state to initial_gripper_open, so the
+    # policy starts like a fresh episode instead of carrying over what it
+    # predicted while the scripted approach was moving the arm.
+    reset_on_handoff=True,
 )
 
 
@@ -72,6 +77,7 @@ class InferenceConfig:
     gripper_open_threshold: float
     handoff_topic: str
     handoff_log_actions: int
+    reset_on_handoff: bool
 
 
 class PolicyInferenceNode(Node):
@@ -161,6 +167,15 @@ class PolicyInferenceNode(Node):
         self.get_logger().info(
             f"IL hand-off #{handoff_id}: received; policy._gripper_state at this tick = {self._gripper_state:.0f}"
         )
+        if self.cfg.reset_on_handoff:
+            self.policy.reset()
+            self._gripper_state = 1.0 if self.cfg.initial_gripper_open else 0.0
+            self.get_logger().info(
+                f"IL hand-off #{handoff_id}: reset_on_handoff -> policy.reset(), "
+                f"_gripper_state {self._handoff['gripper_state_before']:.0f} -> {self._gripper_state:.0f}"
+            )
+        else:
+            self.get_logger().info(f"IL hand-off #{handoff_id}: reset_on_handoff is off, policy state carried over")
 
     def _log_handoff_tick(self, obs, action):
         """At the first tick after a hand-off, log the state the policy was given;

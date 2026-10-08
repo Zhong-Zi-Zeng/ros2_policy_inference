@@ -25,9 +25,10 @@ class PolicyModel(ABC):
     inference_rate_hz = None
 
     def reset(self):
-        """Called once when the node starts. Override to reset any internal
-        state (e.g. an action-chunking buffer or recurrent hidden state)
-        between episodes. No-op by default."""
+        """Called when the node starts and, with reset_on_handoff, at every IL
+        hand-off from the sim. Override to reset any internal state (e.g. an
+        action-chunking buffer or recurrent hidden state) between episodes.
+        No-op by default."""
 
     @abstractmethod
     def predict(self, obs: dict) -> np.ndarray:
