@@ -57,6 +57,10 @@ class ACTPolicyModel(PolicyModel):
 
         cfg = PreTrainedConfig.from_pretrained(checkpoint_path)
         cfg.device = device
+        # The checkpoint holds every backbone tensor, so the ImageNet init ACTPolicy would otherwise
+        # download (torchvision, ~45 MB, on every fresh container) is overwritten anyway - and the
+        # download fails offline. Skipping it loads bit-identical weights.
+        cfg.pretrained_backbone_weights = None
         # Inference-only overrides. They must be set on the config BEFORE the policy is built:
         # ACTPolicy creates its temporal ensembler and action queue from the config in __init__.
         if temporal_ensemble_coeff is not None:
