@@ -20,7 +20,10 @@ def create_policy(name: str) -> PolicyModel:
     if name == "liteflow":
         from .liteflow.liteflow_policy import LiteFlowPolicyModel
         return LiteFlowPolicyModel()
-    if name == "diffusion":
+    if name in ("diffusion", "diffusion_rtc"):
+        # Same checkpoint and backend; diffusion_rtc adds guided Real-Time Chunking at inference
+        # (policies/diffusion/rtc.py), diffusion keeps lerobot's synchronous chunking.
         from .diffusion.diffusion_policy import DiffusionPolicyModel
-        return DiffusionPolicyModel()
-    raise ValueError(f"unknown policy_name '{name}' (options: dummy, act, pi, liteflow, diffusion)")
+        return DiffusionPolicyModel(use_rtc=(name == "diffusion_rtc"))
+    raise ValueError(
+        f"unknown policy_name '{name}' (options: dummy, act, pi, liteflow, diffusion, diffusion_rtc)")

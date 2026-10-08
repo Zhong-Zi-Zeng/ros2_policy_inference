@@ -5,7 +5,7 @@
 #
 # --policy-name picks which policy to launch and, from that, which image:
 # liteflow runs in its own image (ROS2 + CUDA + InternVL3/FLOWER — see
-# Dockerfile.liteflow), everything else (act/pi/dummy/diffusion) in the shared
+# Dockerfile.liteflow), everything else (act/pi/dummy/diffusion/diffusion_rtc) in the shared
 # lerobot one. Either way, code is mounted in and colcon-built fresh by
 # entrypoint.sh on every container start, so pulling an older image is
 # fine as long as its Dockerfile hasn't changed. Rebuild + push_docker.sh
@@ -21,7 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 if [ "${1:-}" != "--policy-name" ] || [ -z "${2:-}" ]; then
-    echo "Usage: $0 --policy-name <dummy|act|pi|liteflow> [command...]" >&2
+    echo "Usage: $0 --policy-name <dummy|act|pi|liteflow|diffusion|diffusion_rtc> [command...]" >&2
     exit 1
 fi
 POLICY_NAME="$2"

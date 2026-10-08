@@ -22,3 +22,21 @@ inference_rate_hz: 30.0
 # Dummy inferences at startup to pay the first-call cost (CUDA context, cuDNN autotune) before the
 # robot moves: ~226 ms on the first sampler call versus ~62 ms steady state on an RTX 4070 Ti SUPER.
 warmup_iters: 3
+
+# Real-Time Chunking (guided, inference only - see rtc.py), used only by policy_name diffusion_rtc;
+# policy_name diffusion ignores this block and keeps the original synchronous chunking (one ~60 ms
+# stall every n_action_steps ticks). With RTC the next chunk is computed on a background thread while
+# the current one executes, and is guided to continue from the actions that will already have run by
+# the time it is ready, so predict() never stalls and consecutive chunks join without a jump. Same
+# checkpoint, settings above apply to both.
+rtc:
+  # Cap on the guidance strength (lerobot's RTCConfig default). Higher = the new chunk's prefix
+  # sticks closer to the previous chunk, at some cost to how freely it can react.
+  max_guidance_weight: 10.0
+  # How the guidance weight decays after the frozen actions: LINEAR, EXP, ONES or ZEROS
+  # (lerobot's RTCAttentionSchedule; LINEAR is its default).
+  prefix_attention_schedule: LINEAR
+  # Inference delay in control ticks: the actions that execute from the old chunk while the new one
+  # is computed, which are frozen in the guidance. null = measured (the slowest of the last 20
+  # guided inferences, rounded up to ticks): ~93 ms -> 3 ticks at 30 Hz on an RTX 4070 Ti SUPER.
+  inference_delay: null
