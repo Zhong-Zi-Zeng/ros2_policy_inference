@@ -14,17 +14,22 @@ policies/base_policy.py for the interface), register it in
 policies/__init__.py's create_policy(), and select it via the policy_name
 parameter (config/params.yaml or `-p policy_name:=...`).
 """
+import json
 from dataclasses import dataclass
 
 import numpy as np
 import rclpy
 from rclpy.node import Node
 from scipy.spatial.transform import Rotation
+from std_msgs.msg import Int32
 
 from .policies import create_policy
 from .policies.base_policy import ACTION_DIM
 from .preprocessing import apply_ee_offset, resize_image
 from .ros_bridge import RosBridge
+from .state_range import load_state_range, range_normalize
+
+_STATE_NAMES = ["joint_0", "joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "gripper"]
 
 _DEFAULT_PARAMS = dict(
     joint_state_topic="/left_arm/joint_states",
@@ -42,6 +47,10 @@ _DEFAULT_PARAMS = dict(
     ee_rot_offset_xyzw=[0.70711, 0.0, 0.70711, 0.0],
     initial_gripper_open=True,
     gripper_open_threshold=0.5,
+    # Published by the sim (delta_extension) when the IL grasp step starts;
+    # the node logs its state and the next handoff_log_actions actions.
+    handoff_topic="/il/grasp/handoff",
+    handoff_log_actions=10,
 )
 
 
@@ -61,6 +70,8 @@ class InferenceConfig:
     ee_rot_offset_xyzw: list
     initial_gripper_open: bool
     gripper_open_threshold: float
+    handoff_topic: str
+    handoff_log_actions: int
 
 
 class PolicyInferenceNode(Node):
@@ -89,6 +100,18 @@ class PolicyInferenceNode(Node):
         self.create_timer(1.0 / rate_hz, self._on_tick)
         self.create_timer(1.0, self._on_health_check)
 
+        # IL hand-off diagnostics: training range of the state (None if the
+        # policy has no lerobot checkpoint), pending hand-off id from the sim,
+        # and the hand-off currently being logged.
+        try:
+            self._state_range = load_state_range(getattr(self.policy, "checkpoint_dir", None))
+        except Exception as e:  # diagnostics only, never block inference
+            self.get_logger().warn(f"could not read the checkpoint's state range: {e}")
+            self._state_range = None
+        self._handoff_pending = None
+        self._handoff = None
+        self.create_subscription(Int32, cfg.handoff_topic, self._on_handoff, 10)
+
     def _load_config(self):
         for name, default in _DEFAULT_PARAMS.items():
             self.declare_parameter(name, default)
@@ -96,6 +119,7 @@ class PolicyInferenceNode(Node):
         return InferenceConfig(**values)
 
     def _on_tick(self):
+        self._start_handoff_if_pending()
         ros_data = self.bridge.get_latest()
         if ros_data is None:
             self.get_logger().warn(
@@ -112,11 +136,87 @@ class PolicyInferenceNode(Node):
                 f"expected ({ACTION_DIM},)"
             )
 
+        self._log_handoff_tick(obs, action)
         self.bridge.publish_action(action)
         self.get_logger().info(f"action: {np.array2string(action, precision=4)}")
         self._gripper_state = (
             1.0 if action[6] >= self.cfg.gripper_open_threshold else 0.0
         )
+
+    # ---------- IL hand-off diagnostics ----------
+
+    def _on_handoff(self, msg):
+        """The sim's IL grasp step started; acted on at the start of the next tick."""
+        self._handoff_pending = msg.data
+
+    def _start_handoff_if_pending(self):
+        if self._handoff_pending is None:
+            return
+        handoff_id, self._handoff_pending = self._handoff_pending, None
+        self._handoff = {
+            "id": handoff_id,
+            "gripper_state_before": self._gripper_state,
+            "actions_left": self.cfg.handoff_log_actions,
+        }
+        self.get_logger().info(
+            f"IL hand-off #{handoff_id}: received; policy._gripper_state at this tick = {self._gripper_state:.0f}"
+        )
+
+    def _log_handoff_tick(self, obs, action):
+        """At the first tick after a hand-off, log the state the policy was given;
+        then log each of the next handoff_log_actions actions."""
+        h = self._handoff
+        if h is None or h["actions_left"] <= 0:
+            return
+        log = self.get_logger()
+        n = self.cfg.handoff_log_actions - h["actions_left"] + 1
+        if n == 1:
+            self._log_handoff_state(h, obs)
+        gripper_in = float(obs["gripper_state"])
+        is_open = action[6] >= self.cfg.gripper_open_threshold
+        log.info(
+            f"IL hand-off #{h['id']} action {n}/{self.cfg.handoff_log_actions}: "
+            f"dpos(mm)={np.array2string(action[:3] * 1000, precision=3)} "
+            f"drot(mrad)={np.array2string(action[3:6] * 1000, precision=3)} "
+            f"gripper={action[6]:.3f} -> {'open' if is_open else 'CLOSE'} "
+            f"(gripper_state fed in {gripper_in:.0f})"
+        )
+        h.setdefault("actions", []).append([round(float(v), 6) for v in action])
+        h["actions_left"] -= 1
+        if h["actions_left"] == 0:
+            log.info("HANDOFF_JSON " + json.dumps({"id": h["id"], "state": h["state"], "actions": h["actions"]}))
+
+    def _log_handoff_state(self, h, obs):
+        log = self.get_logger()
+        state = np.r_[np.asarray(obs["joint_pos"], dtype=np.float64), float(obs["gripper_state"])]
+        rng = self._state_range
+        if rng is not None and len(rng[0]) != len(state):
+            rng = None
+        norm = range_normalize(state, rng) if rng is not None else None
+        out = [] if norm is None else [i for i in range(len(state)) if abs(norm[i]) > 1.0 + 1e-6]
+        log.info(
+            f"IL hand-off #{h['id']} state given to the policy "
+            f"(gripper_state before hand-off {h['gripper_state_before']:.0f}, fed now {state[-1]:.0f}); "
+            + ("range-normalized: training data spans [-1, 1]" if rng is not None
+               else "no training range available for this policy")
+        )
+        for i, name in enumerate(_STATE_NAMES[: len(state)]):
+            if rng is None:
+                log.info(f"    {name:8s} raw {state[i]:+.4f}")
+            else:
+                flag = "  <-- OUTSIDE TRAINING RANGE" if i in out else ""
+                log.info(
+                    f"    {name:8s} raw {state[i]:+.4f}  normalized {norm[i]:+7.2f}  "
+                    f"training [{rng[0][i]:+.3f}, {rng[1][i]:+.3f}]{flag}"
+                )
+        if rng is not None:
+            log.info(f"IL hand-off #{h['id']}: {len(out)} of {len(state)} state values outside the training range")
+        h["state"] = {
+            "raw": [round(float(v), 6) for v in state],
+            "normalized": None if norm is None else [round(float(v), 3) for v in norm],
+            "outside_training_range": [_STATE_NAMES[i] for i in out],
+            "gripper_state_before": h["gripper_state_before"],
+        }
 
     def _build_obs(self, ros_data):
         ee_pos, ee_quat = apply_ee_offset(

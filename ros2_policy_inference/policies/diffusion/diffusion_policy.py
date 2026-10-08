@@ -71,6 +71,7 @@ class DiffusionPolicyModel(PolicyModel):
         cfg = PreTrainedConfig.from_pretrained(checkpoint_path)
         cfg.device = device
         self.cfg = cfg
+        self.checkpoint_dir = checkpoint_path   # read by the node for diagnostics (state_range.py)
         self.policy = DiffusionPolicy.from_pretrained(checkpoint_path, config=cfg).to(device).eval()
         # Normalization statistics saved with the checkpoint (QUANTILES for the action, MIN_MAX for
         # the state, MEAN_STD for the image). Loading them from `pretrained_path` rather than

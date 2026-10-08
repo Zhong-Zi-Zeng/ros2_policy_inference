@@ -71,6 +71,7 @@ class ACTPolicyModel(PolicyModel):
         if not 1 <= cfg.n_action_steps <= cfg.chunk_size:
             raise ValueError(f"n_action_steps={cfg.n_action_steps} must be in [1, chunk_size={cfg.chunk_size}]")
         self.cfg = cfg
+        self.checkpoint_dir = checkpoint_path   # read by the node for diagnostics (state_range.py)
         self.policy = ACTPolicy.from_pretrained(checkpoint_path, config=cfg).to(device).eval()
         # Normalization statistics saved with the checkpoint; loading them from `pretrained_path`
         # rather than recomputing keeps deployment identical to training, and the post-processor
