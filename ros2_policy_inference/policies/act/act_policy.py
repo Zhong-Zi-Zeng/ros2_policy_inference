@@ -78,7 +78,10 @@ class ACTPolicyModel(PolicyModel):
         # maps the network output back into metres/radians.
         self.pre, self.post = make_pre_post_processors(policy_cfg=cfg, pretrained_path=checkpoint_path)
 
-        self._image_key = next(iter(cfg.image_features)) if cfg.image_features else "observation.images.wrist"
+        # The RGB camera: observation.images.wrist when present (depth checkpoints also have
+        # observation.images.wrist_depth, filled by _extra_images()), else the first image feature.
+        self._image_key = ("observation.images.wrist" if "observation.images.wrist" in cfg.image_features
+                           else next(iter(cfg.image_features), "observation.images.wrist"))
         self._state_dim = cfg.input_features["observation.state"].shape[0]
         mode = (f"temporal ensembling (coeff {cfg.temporal_ensemble_coeff})"
                 if cfg.temporal_ensemble_coeff is not None else f"n_action_steps={cfg.n_action_steps}")
@@ -113,8 +116,8 @@ class ACTPolicyModel(PolicyModel):
         """obs (ROS node format) -> the batch the checkpoint expects.
 
         Only two of the node's observation keys are used: the policy was trained on the wrist image
-        and a 7-D state of [joint_0..joint_5, gripper]. depth, joint_vel, ee_pos, ee_quat and
-        ft_wrench are deliberately ignored.
+        and a 7-D state of [joint_0..joint_5, gripper]. joint_vel, ee_pos, ee_quat and ft_wrench are
+        deliberately ignored, and depth is used only by depth checkpoints (_extra_images).
         """
         torch = self._torch
         rgb = obs["rgb"]                                   # HWC uint8 RGB, already image_size square
@@ -132,10 +135,16 @@ class ACTPolicyModel(PolicyModel):
             )
         return {
             self._image_key: img,
+            **self._extra_images(obs),
             "observation.state": torch.from_numpy(state).to(self.device).unsqueeze(0),
             # Carried through for parity with training batches; ACT does not condition on language.
             "task": [self.task],
         }
+
+    def _extra_images(self, obs: dict) -> dict:
+        """More image inputs for the batch; none for RGB-only checkpoints. policies/act_depth
+        overrides it to add the encoded depth image."""
+        return {}
 
     def _warmup(self, iters: int):
         """Spend the first-call cost (CUDA context, cuDNN autotune, lazy kernels) before the robot
@@ -148,6 +157,7 @@ class ACTPolicyModel(PolicyModel):
             "rgb": np.zeros((h, w, 3), dtype=np.uint8),
             "joint_pos": np.zeros(self._state_dim - 1, dtype=np.float32),
             "gripper_state": np.float32(1.0),
+            "depth": np.zeros((h, w), dtype=np.uint16),   # only read by depth checkpoints
         }
         with torch.no_grad():
             for _ in range(iters):

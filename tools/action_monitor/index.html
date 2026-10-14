@@ -1,0 +1,862 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Policy Action Monitor</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --s-x: #2a78d6;
+    --s-y: #eb6834;
+    --s-z: #1baf7a;
+    --s-grip: #4a3aa7;
+    --good: #0ca30c;
+    --warning: #fab219;
+    --critical: #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --ink: #ffffff;
+      --ink-2: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --border: rgba(255, 255, 255, 0.10);
+      --s-x: #3987e5;
+      --s-y: #d95926;
+      --s-z: #199e70;
+      --s-grip: #9085e9;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --s-x: #3987e5;
+    --s-y: #d95926;
+    --s-z: #199e70;
+    --s-grip: #9085e9;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 1280px; margin: 0 auto; padding: 20px 16px 40px; }
+  header h1 { margin: 0; font-size: 20px; font-weight: 600; }
+  header p { margin: 2px 0 0; color: var(--ink-2); }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
+
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .tile {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    min-width: 0;
+  }
+  .tile .label { color: var(--ink-2); font-size: 12px; }
+  .tile .value { font-size: 22px; font-weight: 600; margin-top: 2px; overflow-wrap: anywhere; }
+  .tile .sub { color: var(--muted); font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
+  .status { display: inline-flex; align-items: center; gap: 8px; }
+  .status svg { flex: none; }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .controls .spacer { flex: 1; }
+  .save-msg { color: var(--ink-2); font-size: 12px; overflow-wrap: anywhere; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  button {
+    font: inherit;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+  .seg button { border: 0; border-radius: 0; }
+  .seg button + button { border-left: 1px solid var(--border); }
+  button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+  button:focus-visible { outline: 2px solid var(--s-x); outline-offset: 2px; }
+
+  .charts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr));
+    gap: 12px;
+  }
+  figure {
+    margin: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px 8px;
+    min-width: 0;
+  }
+  figcaption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; }
+  figcaption .title { font-weight: 600; }
+  figcaption .unit { color: var(--muted); font-weight: 400; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--ink-2); font-size: 12px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+  .legend i { width: 14px; height: 2px; border-radius: 1px; display: inline-block; }
+  .plot { position: relative; height: 220px; margin-top: 6px; }
+  .plot canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: var(--surface);
+    color: var(--ink);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    padding: 6px 10px;
+    font-size: 12px;
+    white-space: nowrap;
+    display: none;
+    z-index: 2;
+  }
+  .tooltip .t { color: var(--muted); margin-bottom: 2px; }
+  .tooltip .row { display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+  .tooltip .row i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .tooltip .row b { font-weight: 600; margin-left: auto; padding-left: 12px; }
+  .note { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
+
+  .timeline {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-top: 12px;
+    padding: 10px 14px;
+  }
+  .timeline h2 { font-size: 14px; margin: 0 0 6px; }
+  .timeline table td:nth-child(2), .timeline table td:nth-child(3) { text-align: right; }
+  .timeline table th:last-child, .timeline table td:last-child { text-align: left; white-space: normal; }
+  .timeline .badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 18px; height: 18px; border-radius: 9px; padding: 0 4px;
+    background: var(--ink-2); color: var(--surface); font-size: 11px; font-weight: 600;
+  }
+  .timeline .empty { color: var(--muted); font-size: 12px; }
+  .table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow-x: auto;
+    margin-top: 12px;
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 10px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  th { color: var(--ink-2); font-weight: 600; position: sticky; top: 0; background: var(--surface); }
+  th:first-child, td:first-child { text-align: left; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Policy Action Monitor</h1>
+    <p>Live output of <code id="topic">/il/grasp/action</code> — <code>[dx, dy, dz, drx, dry, drz, gripper]</code>, world frame</p>
+  </header>
+
+  <section class="tiles" aria-label="Status">
+    <div class="tile">
+      <div class="label">Policy</div>
+      <div class="value" id="policy">—</div>
+      <div class="sub" id="publishers">no publisher</div>
+    </div>
+    <div class="tile">
+      <div class="label">Stream</div>
+      <div class="value status" id="stream"></div>
+      <div class="sub" id="age">—</div>
+    </div>
+    <div class="tile">
+      <div class="label">Action rate</div>
+      <div class="value" id="rate">—</div>
+      <div class="sub">over the last 2 s</div>
+    </div>
+    <div class="tile">
+      <div class="label">Gripper command</div>
+      <div class="value" id="gripper">—</div>
+      <div class="sub" id="gripper-raw">—</div>
+    </div>
+    <div class="tile">
+      <div class="label">Actions received</div>
+      <div class="value" id="count">0</div>
+      <div class="sub" id="bad">—</div>
+    </div>
+  </section>
+
+  <div class="controls">
+    <span class="seg" role="group" aria-label="Time range" id="window-seg">
+      <button data-window="0" aria-pressed="true">Whole run</button>
+      <button data-window="10">Last 10 s</button>
+      <button data-window="30">Last 30 s</button>
+    </span>
+    <button id="pause" aria-pressed="false">Stop</button>
+    <button id="clear">Clear</button>
+    <span class="spacer"></span>
+    <span class="save-msg" id="save-msg" role="status"></span>
+    <button id="save-png">Save PNG</button>
+    <button id="save-csv">Save CSV</button>
+    <button id="table-toggle" aria-pressed="false">Table view</button>
+  </div>
+
+  <section class="charts" id="charts"></section>
+  <p class="note">Time axis: seconds since the run's first action, up to its last action. A new run starts after a gap of more than 1 s with no actions, or when you press Clear; cumulative translation restarts with it.</p>
+
+  <section class="timeline" aria-label="Timeline">
+    <h2>Timeline <span style="color:var(--muted);font-weight:400">(numbers match the dashed markers on the charts)</span></h2>
+    <table><thead><tr><th>#</th><th>t (s)</th><th>clock</th><th>event</th></tr></thead>
+      <tbody id="timeline-body"><tr><td colspan="4" class="empty">no events yet</td></tr></tbody></table>
+  </section>
+
+  <div class="table-wrap" id="table-wrap" hidden>
+    <table>
+      <thead>
+        <tr><th>t (s)</th><th>dx (mm)</th><th>dy (mm)</th><th>dz (mm)</th><th>drx (°)</th><th>dry (°)</th><th>drz (°)</th><th>gripper</th></tr>
+      </thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+</main>
+
+<script>
+(() => {
+  const RESET_GAP_S = 1.0;      // a pause longer than this starts a new cumulative run
+  const STALE_S = 1.0;          // no action for this long -> "Stalled"
+  const POLL_MS = 100;
+  const MIN_SPAN_S = 5;         // the axis never spans less than this, so a run's first second isn't stretched
+
+  const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- data ----------
+  // Each sample: {t, a:[7], cum:[3]}  (a in raw units: m, rad, gripper)
+  let samples = [];
+  let serverEvents = [];       // [[wall time, kind, text]] from action_monitor.py (hand-off, publishers)
+  let lastSeq = 0;
+  let clockOffset = 0;          // server time - local time, seconds
+  let status = null;
+  let paused = false;
+  let frozenNow = null;
+  let windowS = 0;              // 0 = whole run, else show only the last windowS seconds of it
+  let cum = [0, 0, 0];
+  let runStart = null;          // server time of the current run's first action
+  let runFirst = 0;             // index in samples of the current run's first action
+  let newRunOnNext = false;     // set by Resume: the next action starts a new recording
+  let runPolicy = null;         // policy name seen while this run was recorded (for saved files)
+  let runSave = null;           // {policy, index}: this run's file number once it has been saved
+  let saveDir = null;           // where the monitor saves files (null = saving disabled)
+
+  function startRun(t) {
+    runStart = t; runFirst = samples.length; cum = [0, 0, 0];
+    runPolicy = null; runSave = null;
+    showSaveMsg("");
+  }
+
+  function ingest(raw) {
+    for (const [seq, t, a] of raw) {
+      const prev = samples[samples.length - 1];
+      if (runStart === null || !prev || t - prev.t > RESET_GAP_S || newRunOnNext) {
+        startRun(t);
+        newRunOnNext = false;
+      }
+      cum = [cum[0] + a[0], cum[1] + a[1], cum[2] + a[2]];
+      samples.push({ t, a, cum: cum.slice() });
+      lastSeq = seq;
+    }
+    // Only the current run is ever drawn, so earlier runs are dropped.
+    if (runFirst > 0) { samples = samples.slice(runFirst); runFirst = 0; }
+  }
+
+  function resetAll() { samples = []; runStart = null; runFirst = 0; cum = [0, 0, 0]; runSave = null; showSaveMsg(""); }
+
+  function serverNow() { return Date.now() / 1000 + clockOffset; }
+  function viewNow() { return paused ? frozenNow : serverNow(); }
+
+  async function poll() {
+    try {
+      const res = await fetch(`/data?since=${lastSeq}`, { cache: "no-store" });
+      const json = await res.json();
+      clockOffset = json.now - Date.now() / 1000;
+      if (json.seq < lastSeq) { resetAll(); lastSeq = 0; } // monitor restarted
+      if (paused) lastSeq = json.seq;                       // stopped: skip what arrives meanwhile
+      else ingest(json.samples);
+      status = json.status;
+      serverEvents = json.events || [];
+      status.reachable = true;
+      saveDir = json.save_dir;
+    } catch (e) {
+      status = Object.assign({}, status, { reachable: false });
+    }
+    setTimeout(poll, POLL_MS);
+  }
+
+  // ---------- charts ----------
+  const mm = (v) => v * 1000;
+  const deg = (v) => v * 180 / Math.PI;
+
+  const CHARTS = [
+    {
+      id: "trans", title: "Translation per step", unit: "mm",
+      series: [
+        { label: "dx", color: "--s-x", get: (s) => mm(s.a[0]) },
+        { label: "dy", color: "--s-y", get: (s) => mm(s.a[1]) },
+        { label: "dz", color: "--s-z", get: (s) => mm(s.a[2]) },
+      ],
+      fmt: (v) => v.toFixed(2),
+    },
+    {
+      id: "rot", title: "Rotation per step", unit: "deg",
+      series: [
+        { label: "drx", color: "--s-x", get: (s) => deg(s.a[3]) },
+        { label: "dry", color: "--s-y", get: (s) => deg(s.a[4]) },
+        { label: "drz", color: "--s-z", get: (s) => deg(s.a[5]) },
+      ],
+      fmt: (v) => v.toFixed(3),
+    },
+    {
+      id: "cum", title: "Cumulative translation", unit: "mm, this run",
+      series: [
+        { label: "x", color: "--s-x", get: (s) => mm(s.cum[0]) },
+        { label: "y", color: "--s-y", get: (s) => mm(s.cum[1]) },
+        { label: "z", color: "--s-z", get: (s) => mm(s.cum[2]) },
+      ],
+      fmt: (v) => v.toFixed(1),
+    },
+    {
+      id: "grip", title: "Gripper command", unit: "1 = open, 0 = close",
+      series: [{ label: "gripper", color: "--s-grip", get: (s) => s.a[6] }],
+      fmt: (v) => v.toFixed(3),
+      domain: [-0.05, 1.05],
+      ticks: [0, 0.5, 1],
+      threshold: 0.5,
+      step: true,
+    },
+  ];
+
+  function buildCharts() {
+    const host = $("charts");
+    for (const c of CHARTS) {
+      const fig = document.createElement("figure");
+      const legend = c.series.length > 1
+        ? `<div class="legend">${c.series.map((s, i) =>
+            `<span><i style="background:var(${s.color})"></i>${s.label} <b id="${c.id}-v${i}">—</b></span>`).join("")}</div>`
+        : `<div class="legend"><span>latest <b id="${c.id}-v0">—</b></span></div>`;
+      fig.innerHTML = `
+        <figcaption><span class="title">${c.title} <span class="unit">(${c.unit})</span></span>${legend}</figcaption>
+        <div class="plot"><canvas role="img" aria-label="${c.title}"></canvas><div class="tooltip"></div></div>`;
+      host.appendChild(fig);
+      c.canvas = fig.querySelector("canvas");
+      c.tip = fig.querySelector(".tooltip");
+      c.hoverX = null;
+      c.canvas.addEventListener("pointermove", (e) => {
+        const r = c.canvas.getBoundingClientRect();
+        c.hoverX = e.clientX - r.left;
+      });
+      c.canvas.addEventListener("pointerleave", () => { c.hoverX = null; c.tip.style.display = "none"; });
+    }
+  }
+
+  function niceTicks(lo, hi, count = 4) {
+    const span = hi - lo || 1;
+    const raw = span / count;
+    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => span / s <= count + 0.5) || 10 * mag;
+    const ticks = [];
+    for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-9; v += step) ticks.push(+v.toFixed(10));
+    return ticks;
+  }
+
+  function fmtTick(v) {
+    const a = Math.abs(v);
+    if (a === 0) return "0";
+    if (a >= 100) return v.toFixed(0);
+    if (a >= 1) return v.toFixed(a % 1 ? 1 : 0);
+    return v.toPrecision(2);
+  }
+
+  // x0..x1: server-time range to draw; tick labels are seconds since runStart.
+  // out (optional, for Save PNG): {canvas, W, H, dpr} to draw into instead of the on-page canvas.
+  function drawChart(c, visible, x0, x1, out) {
+    const canvas = out ? out.canvas : c.canvas;
+    const dpr = out ? out.dpr : (window.devicePixelRatio || 1);
+    const W = out ? out.W : canvas.clientWidth, H = out ? out.H : canvas.clientHeight;
+    if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+      canvas.width = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
+    }
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    const pad = { l: 48, r: 40, t: 8, b: 22 };   // same margins on every chart so time axes line up
+    const pw = W - pad.l - pad.r, ph = H - pad.t - pad.b;
+    const span = x1 - x0;
+    const xOf = (t) => pad.l + ((t - x0) / span) * pw;
+    const elapsed = (t) => t - (runStart ?? x0);
+
+    // y domain
+    let lo, hi, ticks;
+    if (c.domain) {
+      [lo, hi] = c.domain; ticks = c.ticks;
+    } else {
+      lo = 0; hi = 0;
+      for (const s of visible) for (const ser of c.series) {
+        const v = ser.get(s); if (v < lo) lo = v; if (v > hi) hi = v;
+      }
+      if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
+      const m = (hi - lo) * 0.08; lo -= m; hi += m;
+      ticks = niceTicks(lo, hi);
+      lo = Math.min(lo, ticks[0]); hi = Math.max(hi, ticks[ticks.length - 1]);
+    }
+    const yOf = (v) => pad.t + (1 - (v - lo) / (hi - lo)) * ph;
+
+    ctx.font = "11px system-ui, -apple-system, 'Segoe UI', sans-serif";
+    ctx.lineWidth = 1;
+
+    // grid + y ticks
+    ctx.fillStyle = css("--muted");
+    ctx.textAlign = "right"; ctx.textBaseline = "middle";
+    for (const v of ticks) {
+      const y = Math.round(yOf(v)) + 0.5;
+      ctx.strokeStyle = v === 0 ? css("--axis") : css("--grid");
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
+      const label = c.id === "grip" ? (v === 1 ? "open" : v === 0 ? "close" : "0.5") : fmtTick(v);
+      ctx.fillText(label, pad.l - 6, y);
+    }
+    if (c.threshold !== undefined) {
+      ctx.save(); ctx.setLineDash([4, 4]); ctx.strokeStyle = css("--axis");
+      const y = Math.round(yOf(c.threshold)) + 0.5;
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke(); ctx.restore();
+    }
+
+    // x ticks: seconds since the run started, ~6 labels whatever the span
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    const xStep = [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600].find((s) => span / s <= 6) || 1200;
+    const e0 = elapsed(x0), e1 = elapsed(x1);
+    for (let e = Math.ceil(e0 / xStep - 1e-9) * xStep; e <= e1 + 1e-9; e += xStep) {
+      const x = xOf(x0 + (e - e0));
+      ctx.textAlign = x < pad.l + 12 ? "left" : x > pad.l + pw - 12 ? "right" : "center";
+      ctx.fillText(e >= 60 && xStep >= 30 ? `${Math.floor(e / 60)}:${String(Math.round(e % 60)).padStart(2, "0")}` : `${+e.toFixed(1)}s`, x, pad.t + ph + 6);
+    }
+
+    // lines
+    ctx.save();
+    ctx.beginPath(); ctx.rect(pad.l, pad.t - 2, pw, ph + 4); ctx.clip();
+    ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.lineCap = "round";
+    for (const ser of c.series) {
+      ctx.strokeStyle = css(ser.color);
+      ctx.beginPath();
+      let prev = null;
+      for (const s of visible) {
+        const x = xOf(s.t), y = yOf(ser.get(s));
+        if (!prev || s.t - prev.t > RESET_GAP_S) ctx.moveTo(x, y);   // break the line across gaps
+        else if (c.step) { ctx.lineTo(x, yOf(ser.get(prev))); ctx.lineTo(x, y); }
+        else ctx.lineTo(x, y);
+        prev = s;
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // timeline markers: numbered dashed lines (numbers match the Timeline panel)
+    ctx.save();
+    ctx.setLineDash([3, 3]); ctx.lineWidth = 1; ctx.font = "10px system-ui, -apple-system, 'Segoe UI', sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    let lastBadgeX = -Infinity;
+    for (const ev of timelineEvents()) {
+      if (ev.t < x0 || ev.t > x1) continue;
+      const x = Math.round(xOf(ev.t)) + 0.5;
+      ctx.strokeStyle = css("--ink-2");
+      ctx.beginPath(); ctx.moveTo(x, pad.t + 12); ctx.lineTo(x, pad.t + ph); ctx.stroke();
+      if (x - lastBadgeX < 16) continue;     // crowded: line only, the Timeline table lists the number
+      lastBadgeX = x;
+      ctx.fillStyle = css("--ink-2"); ctx.beginPath(); ctx.arc(x, pad.t + 6, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = css("--surface"); ctx.fillText(String(ev.n), x, pad.t + 1);
+    }
+    ctx.restore();
+
+    // direct labels at the right end, nudged apart so they never overlap
+    const last = visible[visible.length - 1];
+    if (last && c.series.length > 1) {
+      const labels = c.series.map((ser) => ({ ser, y: yOf(ser.get(last)) }))
+        .sort((a, b) => a.y - b.y);
+      for (let i = 1; i < labels.length; i++) labels[i].y = Math.max(labels[i].y, labels[i - 1].y + 13);
+      const overflow = labels[labels.length - 1].y - (pad.t + ph);
+      if (overflow > 0) labels.forEach((l) => (l.y -= overflow));
+      ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      const lx = Math.min(xOf(last.t), pad.l + pw) + 6;   // just past where the lines end
+      for (const l of labels) {
+        ctx.fillStyle = css(l.ser.color);
+        ctx.fillRect(lx, Math.round(l.y) - 1, 6, 2);
+        ctx.fillStyle = css("--ink-2");
+        ctx.fillText(l.ser.label, lx + 9, l.y);
+      }
+    }
+
+    if (out) return;   // exported image: no live legend values, no hover
+
+    // legend values = latest sample
+    c.series.forEach((ser, i) => {
+      const el = $(`${c.id}-v${i}`);
+      if (el) el.textContent = last ? c.fmt(ser.get(last)) : "—";
+    });
+
+    // hover: crosshair + tooltip on the nearest sample
+    if (c.hoverX !== null && visible.length) {
+      const tHover = x0 + ((c.hoverX - pad.l) / pw) * span;
+      let best = visible[0];
+      for (const s of visible) if (Math.abs(s.t - tHover) < Math.abs(best.t - tHover)) best = s;
+      const x = xOf(best.t);
+      ctx.strokeStyle = css("--axis"); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, pad.t); ctx.lineTo(Math.round(x) + 0.5, pad.t + ph); ctx.stroke();
+      for (const ser of c.series) {
+        const y = yOf(ser.get(best));
+        ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = css(ser.color); ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = css("--surface"); ctx.stroke();
+      }
+      const tip = c.tip;
+      tip.innerHTML = `<div class="t">t = ${elapsed(best.t).toFixed(2)} s</div>` +
+        c.series.map((ser) =>
+          `<div class="row"><i style="background:var(${ser.color})"></i>${ser.label}<b>${c.fmt(ser.get(best))} ${c.id === "grip" ? "" : c.unit.split(",")[0]}</b></div>`).join("");
+      tip.style.display = "block";
+      const tw = tip.offsetWidth;
+      tip.style.left = `${x + 12 + tw > W ? x - tw - 12 : x + 12}px`;
+      tip.style.top = `${pad.t}px`;
+    }
+  }
+
+  // ---------- tiles + table ----------
+  const ICONS = {
+    good: '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="var(--good)"/><path d="M4 7.2l2 2 4-4.4" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    warning: '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1l6.5 12H.5z" fill="var(--warning)"/><path d="M7 5.5v3.3M7 10.6v.1" stroke="#0b0b0b" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    critical: '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="var(--critical)"/><path d="M4.6 4.6l4.8 4.8M9.4 4.6l-4.8 4.8" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    stopped: '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect x="1" y="1" width="12" height="12" rx="2" fill="var(--ink-2)"/></svg>',
+  };
+
+  function setStream(kind, text) {
+    $("stream").innerHTML = `${ICONS[kind]}<span>${text}</span>`;
+  }
+
+  // Name of what is publishing: the policy node's policy_name, else the publishing node
+  // (e.g. "replay" for tools/action_replay), else null.
+  function sourceName() {
+    if (!status) return null;
+    if (status.policy) return status.policy;
+    if (status.publishers && status.publishers.length === 1) {
+      const node = status.publishers[0].replace(/^\//, "");
+      return node === "action_replayer" ? "replay" : node;
+    }
+    return null;
+  }
+
+  function updateTiles(now) {
+    const last = samples[samples.length - 1];
+    const age = last ? serverNow() - last.t : Infinity;
+
+    if (paused) {
+      setStream("stopped", "Recording stopped");
+      $("age").textContent = "new actions are ignored until Resume";
+    } else if (!status || !status.reachable) {
+      setStream("critical", "Monitor offline");
+      $("age").textContent = "cannot reach action_monitor.py";
+    } else if (!status.publishers.length) {
+      setStream("critical", "No publisher");
+      $("age").textContent = last ? `last action ${age.toFixed(1)} s ago` : "no policy is running";
+    } else if (age > STALE_S) {
+      setStream("warning", "Stalled");
+      $("age").textContent = last ? `last action ${age.toFixed(1)} s ago` : "publisher found, waiting for actions";
+    } else {
+      setStream("good", "Live");
+      $("age").textContent = `last action ${(age * 1000).toFixed(0)} ms ago`;
+    }
+
+    if (sourceName() && !paused && last) runPolicy = sourceName();
+    if (status) {
+      $("topic").textContent = status.topic;
+      $("policy").textContent = sourceName() || (status.publishers.length ? "unknown" : "—");
+      $("publishers").textContent = status.publishers.length
+        ? (status.publishers.length > 1 ? `⚠ ${status.publishers.length} publishers: ` : "") + status.publishers.join(", ")
+        : "no publisher";
+    }
+    const runText = last
+      ? `this run: ${samples.length.toLocaleString()} actions, ${(last.t - runStart).toFixed(1)} s`
+      : "no run yet";
+    $("bad").textContent = status && status.bad_count
+      ? `${runText} · ${status.bad_count} ignored (length ${status.last_bad_len}, expected 7)`
+      : runText;
+
+    const recent = samples.filter((s) => s.t >= serverNow() - 2).length;
+    $("rate").textContent = last && age <= 2 ? `${(recent / 2).toFixed(1)} Hz` : "—";
+    $("count").textContent = lastSeq.toLocaleString();
+    if (last) {
+      const g = last.a[6];
+      $("gripper").textContent = g >= 0.5 ? "Open" : "Close";
+      $("gripper-raw").textContent = `raw ${g.toFixed(3)} (threshold 0.5)`;
+    }
+  }
+
+  let tableTick = 0;
+  // Events of the current run: server events (hand-off, publishers) plus gripper switches found in
+  // the action stream. Numbered in time order; markers and the Timeline panel use the same numbers.
+  function timelineEvents() {
+    if (runStart === null) return [];
+    const evs = serverEvents.filter((e) => e[0] >= runStart - 0.5).map((e) => ({ t: e[0], kind: e[1], text: e[2] }));
+    // Gripper switches: always list those within 5 s after a hand-off (what the sim acts on);
+    // elsewhere list the first 12 and summarise the rest.
+    const handoffs = evs.filter((e) => e.kind === "handoff").map((e) => e.t);
+    const nearHandoff = (t) => handoffs.some((h) => t >= h && t - h <= 5);
+    let prevOpen = null, other = 0, i = 0, sinceHandoff = null;
+    for (const s of samples) {
+      i++;
+      const open = s.a[6] >= 0.5;
+      const h = handoffs.filter((x) => x <= s.t).pop();
+      if (h !== undefined && h !== sinceHandoff?.h) sinceHandoff = { h, n: 0 };
+      if (sinceHandoff && s.t >= sinceHandoff.h) sinceHandoff.n++;
+      if (prevOpen !== null && open !== prevOpen) {
+        const where = sinceHandoff && s.t - sinceHandoff.h <= 5 ? `, action ${sinceHandoff.n} after the hand-off` : "";
+        const text = `gripper ${open ? "OPEN" : "CLOSE"} command (action ${i} of the run${where}, raw ${s.a[6].toFixed(2)})`;
+        if (nearHandoff(s.t)) {
+          // after a hand-off the sim's IL step ends at the first close: list up to it, then summarise
+          if (!sinceHandoff.closed) evs.push({ t: s.t, kind: "gripper", text: open ? text : text + " - the sim's IL step ends here" });
+          else if (!sinceHandoff.noted) { sinceHandoff.noted = true; evs.push({ t: s.t, kind: "gripper", text: "policy keeps switching after the IL step ended (not applied by the sim; not listed)" }); }
+          if (!open) sinceHandoff.closed = true;
+        }
+        else if (++other <= 12) evs.push({ t: s.t, kind: "gripper", text });
+        else if (other === 13) evs.push({ t: s.t, kind: "gripper", text: "gripper keeps switching: further switches outside hand-off windows not listed" });
+      }
+      prevOpen = open;
+    }
+    evs.sort((a, b) => a.t - b.t);
+    evs.forEach((e, k) => (e.n = k + 1));
+    return evs;
+  }
+
+  let timelineKey = "";
+  function updateTimeline() {
+    const evs = timelineEvents();
+    const key = evs.map((e) => e.n + e.text).join("|");
+    if (key === timelineKey) return;
+    timelineKey = key;
+    const clock = (t) => new Date(t * 1000).toLocaleTimeString([], { hour12: false }) + "." + String(Math.floor((t % 1) * 10));
+    $("timeline-body").innerHTML = evs.length
+      ? evs.map((e) => `<tr><td><span class="badge">${e.n}</span></td><td>${(e.t - runStart).toFixed(2)}</td>` +
+          `<td>${clock(e.t)}</td><td>${e.text.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</td></tr>`).join("")
+      : '<tr><td colspan="4" class="empty">no events yet</td></tr>';
+  }
+
+  function updateTable() {
+    if ($("table-wrap").hidden || paused) return;
+    if (++tableTick % 5) return;   // ~12 Hz is plenty for a table
+    const rows = samples.slice(-25).reverse().map((s) => {
+      const time = (s.t - runStart).toFixed(3);
+      return `<tr><td>${time}</td>${[0, 1, 2].map((i) => `<td>${mm(s.a[i]).toFixed(2)}</td>`).join("")}` +
+        `${[3, 4, 5].map((i) => `<td>${deg(s.a[i]).toFixed(3)}</td>`).join("")}<td>${s.a[6].toFixed(3)}</td></tr>`;
+    });
+    $("table-body").innerHTML = rows.join("") || '<tr><td colspan="8">no actions yet</td></tr>';
+  }
+
+  // ---------- loop ----------
+  // What the charts show right now: the samples and the server-time range [x0, x1].
+  function computeView() {
+    const now = viewNow();
+    const inView = samples.filter((s) => s.t <= now);
+    const last = inView[inView.length - 1];
+    // Live: the axis runs to "now" and grows. Finished/stalled/stopped: it ends at the last action.
+    const live = !paused && last && serverNow() - last.t <= STALE_S;
+    let x1 = last ? (live ? now : last.t) : now;
+    let x0 = runStart ?? x1;
+    if (windowS) x0 = Math.max(x0, x1 - windowS);
+    const minSpan = windowS || MIN_SPAN_S;
+    if (x1 - x0 < minSpan) x1 = x0 + minSpan;
+    let i = inView.length;
+    while (i > 0 && inView[i - 1].t >= x0) i--;
+    const visible = inView.slice(Math.max(0, i - 1));   // one point before x0 so the line reaches the edge
+    return { now, inView, last, visible, x0, x1 };
+  }
+
+  function frame() {
+    const { now, visible, x0, x1 } = computeView();
+    for (const c of CHARTS) drawChart(c, visible, x0, x1);
+    updateTiles(now);
+    updateTable();
+    updateTimeline();
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- controls ----------
+  $("window-seg").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    windowS = +b.dataset.window;
+    for (const x of $("window-seg").querySelectorAll("button")) x.setAttribute("aria-pressed", String(x === b));
+  });
+  $("pause").addEventListener("click", (e) => {
+    paused = !paused;
+    frozenNow = serverNow();
+    if (!paused) newRunOnNext = true;   // what arrived while stopped was skipped, so don't splice runs
+    e.target.setAttribute("aria-pressed", String(paused));
+    e.target.textContent = paused ? "Resume" : "Stop";
+  });
+
+  // ---------- save ----------
+  // Files are named <policy>_NN.<ext>. The monitor picks NN (next unused number for that
+  // policy in its save folder) once per run, so a run's PNG and CSV share it.
+  function policySlug() {
+    return (runPolicy || sourceName() || "policy").replace(/[^\w.-]+/g, "_").slice(0, 64);
+  }
+  function showSaveMsg(text) {
+    $("save-msg").textContent = text;
+  }
+  function download(blob, name) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  }
+  async function saveFile(blob, ext) {
+    const policy = policySlug();
+    try {
+      if (!saveDir) throw new Error("monitor was started without --save-dir");
+      if (!runSave || runSave.policy !== policy) {
+        // One request per run, shared by PNG and CSV even when both are clicked before it returns
+        runSave = { policy, index: fetch(`/next-index?policy=${encodeURIComponent(policy)}`).then(async (r) => {
+          const j = await r.json();
+          if (!r.ok) throw new Error(j.error);
+          return j.index;
+        }) };
+      }
+      const index = await runSave.index;
+      const name = `${policy}_${String(index).padStart(2, "0")}.${ext}`;
+      const r = await fetch(`/save?name=${encodeURIComponent(name)}`, { method: "POST", body: blob });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error);
+      showSaveMsg(`Saved ${j.path}`);
+    } catch (e) {
+      // Fall back to a normal browser download, so the run is never lost.
+      const idx = await Promise.resolve(runSave?.index).catch(() => null);
+      if (idx === null) runSave = null;      // the number request failed: ask again next time
+      const name = `${policy}_${String(idx ?? 1).padStart(2, "0")}.${ext}`;
+      download(blob, name);
+      showSaveMsg(`Could not save on the monitor (${e.message}); downloaded ${name} instead`);
+    }
+  }
+
+  function saveCSV() {
+    const { inView } = computeView();
+    if (!inView.length) return alert("No run recorded yet.");
+    const lines = ["t_s,dx_m,dy_m,dz_m,drx_rad,dry_rad,drz_rad,gripper,cum_x_m,cum_y_m,cum_z_m,unix_time_s"];
+    for (const s of inView) {
+      lines.push([(s.t - runStart).toFixed(4), ...s.a, ...s.cum, s.t.toFixed(4)].join(","));
+    }
+    saveFile(new Blob([lines.join("\n") + "\n"], { type: "text/csv" }), "csv");
+  }
+
+  function savePNG() {
+    const view = computeView();
+    if (!view.last) return alert("No run recorded yet.");
+    const S = 2;                                  // export at 2x for a sharp image
+    const M = 24, GAP = 16, PW = 760, PH = 300, CAP = 40, HEAD = 76, FOOT = 28;
+    const W = M * 2 + PW * 2 + GAP, H = HEAD + 2 * (CAP + PH) + GAP + FOOT;
+    const out = document.createElement("canvas");
+    out.width = W * S; out.height = H * S;
+    const ctx = out.getContext("2d");
+    ctx.scale(S, S);
+    const font = (size, weight = 400) => `${weight} ${size}px system-ui, -apple-system, 'Segoe UI', sans-serif`;
+
+    ctx.fillStyle = css("--page"); ctx.fillRect(0, 0, W, H);
+    ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+    ctx.fillStyle = css("--ink"); ctx.font = font(20, 600);
+    ctx.fillText(`Policy actions — ${runPolicy || sourceName() || "unknown policy"}`, M, M + 18);
+    const runLen = view.last.t - runStart;
+    ctx.fillStyle = css("--ink-2"); ctx.font = font(13);
+    ctx.fillText(
+      `${new Date(runStart * 1000).toLocaleString()}  ·  run ${runLen.toFixed(1)} s  ·  ${view.inView.length} actions` +
+      `  ·  ${status?.topic || "/il/grasp/action"}  ·  final gripper ${view.last.a[6] >= 0.5 ? "open" : "close"} (${view.last.a[6].toFixed(3)})`,
+      M, M + 40);
+
+    CHARTS.forEach((c, k) => {
+      const x = M + (k % 2) * (PW + GAP), y = HEAD + Math.floor(k / 2) * (CAP + PH + GAP);
+      ctx.fillStyle = css("--surface"); ctx.strokeStyle = css("--border"); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(x + 0.5, y + 0.5, PW - 1, CAP + PH - 1, 10); ctx.fill(); ctx.stroke();
+
+      ctx.textAlign = "left"; ctx.fillStyle = css("--ink"); ctx.font = font(14, 600);
+      ctx.fillText(c.title, x + 14, y + 26);
+      const tw = ctx.measureText(c.title).width;
+      ctx.fillStyle = css("--muted"); ctx.font = font(14);
+      ctx.fillText(` (${c.unit})`, x + 14 + tw, y + 26);
+
+      // legend with each series' final value, right-aligned
+      ctx.font = font(12); ctx.textAlign = "left";
+      let lx = x + PW - 14;
+      for (const ser of [...c.series].reverse()) {
+        const text = `${ser.label} ${c.fmt(ser.get(view.last))}`;
+        lx -= ctx.measureText(text).width;
+        ctx.fillStyle = css("--ink-2"); ctx.fillText(text, lx, y + 26);
+        lx -= 20;
+        ctx.fillStyle = css(ser.color); ctx.fillRect(lx, y + 21, 14, 2);
+        lx -= 14;
+      }
+
+      const tmp = document.createElement("canvas");
+      drawChart(c, view.visible, view.x0, view.x1, { canvas: tmp, W: PW - 16, H: PH - 8, dpr: S });
+      ctx.drawImage(tmp, x + 8, y + CAP, PW - 16, PH - 8);
+    });
+
+    ctx.textAlign = "left"; ctx.fillStyle = css("--muted"); ctx.font = font(12);
+    ctx.fillText("Time axis: seconds since the run's first action. Cumulative translation sums the per-step offsets over the run.",
+      M, H - 12);
+    out.toBlob((blob) => saveFile(blob, "png"), "image/png");
+  }
+
+  $("save-png").addEventListener("click", savePNG);
+  $("save-csv").addEventListener("click", saveCSV);
+  $("clear").addEventListener("click", resetAll);
+  $("table-toggle").addEventListener("click", (e) => {
+    const wrap = $("table-wrap");
+    wrap.hidden = !wrap.hidden;
+    e.target.setAttribute("aria-pressed", String(!wrap.hidden));
+    tableTick = 4; updateTable();
+  });
+
+  buildCharts();
+  setStream("warning", "Connecting");
+  poll();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

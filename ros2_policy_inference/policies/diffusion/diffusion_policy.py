@@ -79,7 +79,10 @@ class DiffusionPolicyModel(PolicyModel):
         # network's [-1, 1] output back into metres/radians.
         self.pre, self.post = make_pre_post_processors(policy_cfg=cfg, pretrained_path=checkpoint_path)
 
-        self._image_key = next(iter(cfg.image_features)) if cfg.image_features else "observation.images.wrist"
+        # The RGB camera: "observation.images.wrist" when present (a depth checkpoint also has
+        # observation.images.wrist_depth, filled by _extra_images()), else the first image feature.
+        self._image_key = ("observation.images.wrist" if "observation.images.wrist" in cfg.image_features
+                           else next(iter(cfg.image_features), "observation.images.wrist"))
         self._state_dim = cfg.input_features["observation.state"].shape[0]
 
         # rtc overrides config.yaml's rtc settings (tests); use_rtc decides whether RTC runs at all.
@@ -158,6 +161,8 @@ class DiffusionPolicyModel(PolicyModel):
             "joint_pos": np.array(obs["joint_pos"], dtype=np.float32, copy=True),
             "gripper_state": np.float32(obs["gripper_state"]),
         }
+        if "depth" in obs:                               # used by depth checkpoints (_extra_images)
+            frame["depth"] = np.array(obs["depth"], copy=True)
         if frame["rgb"].dtype != np.uint8:
             raise ValueError(f"obs['rgb'] must be uint8, got {frame['rgb'].dtype}")
         while len(self._hist) < self._hist.maxlen - 1:   # first tick: repeat it, as lerobot does
@@ -271,11 +276,17 @@ class DiffusionPolicyModel(PolicyModel):
             )
         return {
             self._image_key: img,
+            **self._extra_images(obs),
             "observation.state": torch.from_numpy(state).to(self.device).unsqueeze(0),
             # Carried through for parity with training batches; the diffusion policy itself does not
             # condition on language, but the processor pipeline passes the field along.
             "task": [self.task],
         }
+
+    def _extra_images(self, obs: dict) -> dict:
+        """Image inputs other than the RGB camera, as {feature key: 1CHW float tensor}. None here;
+        policies/depth_inference overrides it to add the encoded depth image."""
+        return {}
 
     def _warmup(self, iters: int):
         """Spend the first-call cost (CUDA context, cuDNN autotune, lazy kernels) before the robot
@@ -290,6 +301,7 @@ class DiffusionPolicyModel(PolicyModel):
                              3), dtype=np.uint8),
             "joint_pos": np.zeros(self._state_dim - 1, dtype=np.float32),
             "gripper_state": np.float32(1.0),
+            "depth": np.zeros((256, 256), dtype=np.uint16),   # only read by depth checkpoints
         }
         if self._rtc:
             frames = [dummy] * self.cfg.n_obs_steps

@@ -1,320 +1,319 @@
-# 🤖 ROS 2 Policy Inference
+# ROS 2 Policy Inference
 
-Run IL / VLA policies with camera and robot observations.
-Publish predicted end-effector actions to `/il/grasp/action`.
+Runs a trained policy (ACT, Diffusion, ...) on the robot's camera and joint topics and publishes
+one action every 1/30 s on `/il/grasp/action`.
 
-## 🏗️ Architecture
+1. [Install on a new PC](#1-install-on-a-new-pc)
+2. [Run on the real robot](#2-run-on-the-real-robot)
+3. [Run in Isaac Sim](#3-run-in-isaac-sim)
+4. [Use the policy with depth](#4-use-the-policy-with-depth)
+5. [Reference](#reference): policies, checkpoints, problems
 
-![ROS 2 Policy Inference Docker architecture](architecture.svg)
+Everything else (topic formats, start pose, how actions must be applied, adding a policy) is in
+[docs/README_details.md](docs/README_details.md).
 
-Each policy's Python dependencies are isolated in its own Docker image, built from a
-dedicated Dockerfile (see [Publish a Docker image](#publish-a-docker-image)). Every image
-mounts the same source code and checkpoints at container start.
-## 🔑 Setup
+## What's in this folder
 
-Get a GitLab token (scope: `read_api`) from your GitLab profile → Access Tokens, then save it once — scripts pick it up automatically:
+A ROS 2 (Jazzy) Python package that runs inside Docker. Your code and the checkpoints are mounted
+into the container, and the package is rebuilt every time the container starts, so you can edit a
+file and restart without rebuilding the image.
 
+```text
+ros2_policy_inference/
+├── run_docker.sh            # start here: ./run_docker.sh --policy-name <policy> [--checkpoint <name>]
+├── push_docker.sh           # publish a rebuilt Docker image to GitLab (maintainers only)
+├── ros2_policy_inference/   # the Python code
+│   ├── inference_node.py    #   the ROS node: reads topics, calls the policy, publishes actions
+│   ├── ros_bridge.py        #   subscribers/publisher, ROS messages -> numpy arrays
+│   ├── preprocessing.py     #   image resize and end-effector offset, the same as when the data was recorded
+│   ├── state_range.py       #   compares the robot state to the training range (log only)
+│   └── policies/            #   one folder per policy, each with its own config.yaml (checkpoint path, settings)
+│       ├── diffusion/       #     Diffusion Policy (+ rtc.py, smooth chunking)
+│       ├── depth_inference/ #     the same + depth image input
+│       ├── act/             #     ACT
+│       ├── act_depth/       #     ACT + depth image input
+│       ├── liteflow/        #     InternVL3 + FLOWER
+│       └── __init__.py      #     policy name -> code, and the --checkpoint lookup
+├── config/params.yaml       # topic names, image size, TCP offset, gripper threshold
+├── launch/                  # ros2 launch file (policy_name:=, checkpoint:=)
+├── docker/                  # Dockerfiles, docker-compose.yml, entrypoint (builds the package)
+├── tools/
+│   ├── action_monitor/      # live plot of the actions in your browser (localhost:8765)
+│   └── action_replay/       # replays recorded demo actions into Isaac Sim to check the sim follows them
+├── docs/                    # README_details.md: the full reference
+├── checkpoints/   (not in git, ~4 GB)  # model weights, mounted at /checkpoints in the container
+├── bags/          (not in git, ~2 GB)  # recorded robot topics for testing without the robot
+└── recordings/    (not in git)         # PNG/CSV saved from the action monitor
+```
+
+**Basics**
+- **Input:** the wrist camera (RGB and depth), joint states, TCP pose and F/T sensor topics.
+  **Output:** `/il/grasp/action` = `[dx, dy, dz, drx, dry, drz, gripper]` at 30 Hz, giving the
+  position change in metres and the rotation change in radians (world frame), and the gripper
+  command (1 = open, 0 = closed).
+- The node itself never moves the arm. Isaac Sim's Delta Extension (Fan Grasp Mode IL) applies the actions.
+- The models were trained in `Robot_Friday` (dataset `data/lerobot_data`, training scripts in `baselines/`).
+
+---
+
+## 1. Install on a new PC
+
+You need only Docker and an NVIDIA GPU. ROS 2, PyTorch and LeRobot all come inside the Docker image.
+
+**1. NVIDIA driver ≥ 580.** Check with `nvidia-smi`.
+
+**2. Docker, and permission to run it without sudo:**
 ```bash
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER        # then log out and back in
+```
+
+**3. NVIDIA Container Toolkit**, which lets Docker use the GPU
+([install guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)):
+```bash
+sudo apt-get install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker
+```
+
+**4. The Docker image.** Choose one:
+```bash
+# a) on the lab network: save a GitLab token (scope read_api) once; run_docker.sh downloads the image
 printf '%s' 'glpat-...' > ~/.gitlab_token && chmod 600 ~/.gitlab_token
+
+# b) anywhere else: build it yourself (uses public sources only)
+docker compose -f docker/docker-compose.yml build policy-inference
 ```
 
-## 🚀 Run
-
-> 💡 Start with `dummy` to check inputs and preprocessing without a checkpoint.
-
-### 🔀 Choosing a policy
-
-Every way of running the node takes **one policy name**; nothing else needs editing to switch.
-
-| Policy | Status | Image | Rate | Checkpoint needed |
-|:--|:--|:--|:--|:--|
-| `dummy` | no-op placeholder | `lerobot_ros2` | 10 Hz | no |
-| `act` | LeRobot ACT (fan grasp), working | `lerobot_ros2` | 30 Hz | `checkpoints/act/fan_grasp_act_v1` |
-| `diffusion` | LeRobot Diffusion Policy (fan grasp), working | `lerobot_ros2` | 30 Hz | `checkpoints/diffusion/fan_grasp_diffusion_v1` |
-| `diffusion_rtc` | same model + guided Real-Time Chunking, working | `lerobot_ros2` | 30 Hz | same as `diffusion` |
-| `liteflow` | InternVL3-1B + FLOWER, working | `liteflow_ros2` | 10 Hz | `checkpoints/liteflow/...` (auto-fetched) |
-| `pi` | not implemented | `lerobot_ros2` | 10 Hz | — |
-
-Where the name goes:
-
-| How you run it | Where to put the policy name |
-|:--|:--|
-| Docker, launch directly | `./run_docker.sh --policy-name <policy>` |
-| Docker, shell first | `./run_docker.sh --policy-name <policy> bash`, then `ros2 launch ... policy_name:=<policy>` inside |
-| Local (no Docker) | `ros2 launch ros2_policy_inference inference.launch.py policy_name:=<policy>` |
-
-What follows from the name automatically:
-
-- **Image**: `run_docker.sh` picks `liteflow_ros2` for `liteflow` and `lerobot_ros2` for everything
-  else. Use the same `--policy-name` for the container as in the `ros2 launch` line inside it, or
-  `liteflow` will be missing its dependencies.
-- **Checkpoint and inference settings**: read from `policies/<policy>/config.yaml`
-  (e.g. ACT's temporal ensembling, Diffusion's DDIM steps); `diffusion_rtc` shares
-  `policies/diffusion/config.yaml`.
-- **Rate**: `act`, `diffusion` and `diffusion_rtc` run at 30 Hz, the rate their training data was recorded at,
-  overriding `inference_rate_hz` in `config/params.yaml`. The node logs
-  `policy '<policy>' requires 30.0 Hz` when this happens.
-- **`diffusion` vs `diffusion_rtc`**: same checkpoint and settings. `diffusion` is lerobot's
-  synchronous chunking (one ~60 ms pause every 8 actions). `diffusion_rtc` adds guided Real-Time
-  Chunking at inference: the next chunk is computed in the background and joined smoothly to the
-  current one, so the node never pauses. Its startup log says `RTC (guided, ...)` and it logs an
-  `RTC: ... stalls 0` summary every 100 chunks; tune it in the `rtc:` block of
-  `policies/diffusion/config.yaml`.
-
-Without a name, `ros2 launch` and `config/params.yaml` default to `dummy`.
-
-**Switching**: stop the running node first (Ctrl+C, or `docker stop <container>`; list them with
-`docker ps`), then start the new one. All policies publish on the same `/il/grasp/action`, so two
-nodes running at once interleave their actions.
-
-### 🐳 Docker
-
-Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
-
+**5. The checkpoints.** They are not in git. Copy the `checkpoints/` folder from the training PC
+into this folder, then check that the copy is complete:
 ```bash
-./run_docker.sh --policy-name act          # or: diffusion, diffusion_rtc, liteflow, dummy
-./run_docker.sh --policy-name act bash     # shell in the container instead of launching
+cd checkpoints && sha256sum -c SHA256SUMS && cd ..     # every line must say OK
+```
+```text
+checkpoints/
+├── act/checkpoint_act_375/
+├── diffusion/checkpoint_diffusion_375/        # RGB only
+├── diffusion/checkpoint_diffusion_50/
+├── diffusion_depth/checkpoint_diffusion_375/  # RGB + depth
+└── diffusion_depth/checkpoint_diffusion_50/
 ```
 
-From that shell, build and launch by hand. The repo is mounted at `/workspace/src/ros2_policy_inference`,
-so code edits on the host are picked up by the rebuild:
-
+**6. Test the install without a robot:**
 ```bash
-source /opt/ros/jazzy/setup.bash
-colcon build --packages-select ros2_policy_inference
-source install/setup.bash
-ros2 launch ros2_policy_inference inference.launch.py policy_name:=act
+./run_docker.sh --policy-name diffusion_rtc --checkpoint diffusion_50k
 ```
+It works if the log shows `loaded diffusion from /checkpoints/diffusion/checkpoint_diffusion_50`
+and `warmed up`, and then repeats `waiting for all observation topics...`. Nothing is publishing
+yet, so the waiting messages are expected. Stop it with Ctrl+C.
 
-`run_docker.sh` pulls the image from the GitLab Package Registry if it isn't present locally. Off the
-lab network, build it instead (only public sources are needed); `run_docker.sh` then uses the local one:
+---
 
-```bash
-docker compose -f docker/docker-compose.yml build policy-inference            # lerobot_ros2
-docker compose -f docker/docker-compose.yml build policy-inference-liteflow   # liteflow_ros2
-```
+## 2. Run on the real robot
 
-### 📦 Checkpoints
+The policy node only **reads** topics and **publishes actions**. It never moves the arm by itself.
 
-Checkpoints live in `checkpoints/` (git-ignored), mounted into the container at `/checkpoints`.
-Set `CHECKPOINT_DIR` in the environment or a repo-root `.env` to use another folder.
+### 2a. Dry run with fake input (recorded bag, no robot)
 
-| Policy | Path | How to get it |
-|:--|:--|:--|
-| `liteflow` | `checkpoints/liteflow/{step_20000_ema,hf_cache}` | fetched automatically by `run_docker.sh` (needs GitLab access) |
-| `diffusion` | `checkpoints/diffusion/fan_grasp_diffusion_v1` | copy the `policy/` folder of the `fan_grasp_diffusion_v1` release bundle |
-| `act` | `checkpoints/act/fan_grasp_act_v1` | copy `Robot_Friday/checkpoints/checkpoint_act/375000/pretrained_model/` |
-
-Each policy's checkpoint path and inference knobs are in `policies/<name>/config.yaml`.
-
-### 💻 Local
-
-> ⚠️ Only for a machine with **ROS 2 Jazzy installed natively** (`/opt/ros/jazzy` exists). Without it
-> these commands fail with `/opt/ros/jazzy/setup.bash: No such file or directory` and
-> `ros2: command not found` — use [Docker](#-docker) instead: `./run_docker.sh --policy-name <policy>`
-> already runs all four steps below inside the container. Activating a conda env (e.g. `lerobot312`)
-> does not provide ROS.
-
-Requires ROS 2 Jazzy and the policy's dependencies (for `act`/`diffusion`: torch + lerobot 0.6.2, see
-`docker/Dockerfile`).
+This checks the whole chain (topics → model → actions) on your PC. Use three terminals, all
+started in this folder.
 
 ```bash
-source /opt/ros/jazzy/setup.bash
-colcon build --packages-select ros2_policy_inference
-source install/setup.bash
-ros2 launch ros2_policy_inference inference.launch.py policy_name:=act   # or: diffusion, diffusion_rtc, liteflow, dummy
-```
+# terminal 1: the policy
+./run_docker.sh --policy-name diffusion_rtc --checkpoint diffusion_50k
 
-`checkpoint_dir` in `policies/<policy>/config.yaml` is a container path (`/checkpoints/...`). Outside
-Docker, change it to the checkpoint's path on your machine, e.g.
-`<repo>/checkpoints/act/fan_grasp_act_v1`.
-
-### 🎞️ Test with a recorded bag
-
-Feeds recorded robot topics to the node, so a policy can be checked without the robot or the sim.
-The bag only replays inputs; a policy node must be running to turn them into actions.
-All commands from the repo root:
-
-```bash
-# 1. the policy node - SKIP if one is already running (see "Docker" above; `docker ps` lists it).
-#    Starting a second one makes two nodes publish on /il/grasp/action.
-./run_docker.sh --policy-name act
-
-# 2. play the bag on a loop, only the topics the node subscribes to
-docker run --rm -it --name bag_player --network host --entrypoint bash \
+# terminal 2: replay a recording of the robot's topics, on a loop
+docker run --rm -it --network host --entrypoint bash \
   -v "$PWD/bags/fan_insertion_2026-09-22:/bag:ro" lerobot_ros2:latest -c \
   'source /opt/ros/jazzy/setup.bash && ros2 bag play /bag --loop --topics \
      /camera_L/color/image_raw/compressed /camera_L/depth/aligned_depth_to_color \
      /left_arm/joint_states /left_arm/tcp_pose_world /left_ft/wrench_compensated'
 
-# 3. watch the actions (or just read the node's terminal, which logs every action)
-docker run --rm -it --network host --entrypoint bash lerobot_ros2:latest -c \
-  'source /opt/ros/jazzy/setup.bash && ros2 topic echo /il/grasp/action'
+# terminal 3: watch the actions as a live plot at http://localhost:8765
+tools/action_monitor/run_action_monitor.sh
 ```
+It works if terminal 1 logs `action: [...]` about 30 times per second. The bag was recorded
+during fan *insertion*, not grasping, so this only proves the pipeline runs, not that the
+grasp is good. The bag is not in git; copy `bags/` over like the checkpoints.
 
-Bags live in `bags/` (git-ignored). Until the bag starts, the node's terminal repeats
-`waiting for all observation topics...` / `no publisher found for ...` — that is expected, not an
-error; once it plays, the node logs `action: [...]` at the policy's rate. `fan_insertion_2026-09-22`
-(17 s) was recorded during fan *insertion*, so it checks the pipeline (topics → preprocessing →
-model → action), not grasp quality; `--loop` also jumps the pose back every 17 s.
+### 2b. With the real robot's observations
 
-### 📡 Check output
+1. **Robot side:** start the robot and camera drivers. All five topics must be publishing, or the
+   node waits forever:
+   `/camera_L/color/image_raw/compressed`, `/camera_L/depth/aligned_depth_to_color`,
+   `/left_arm/joint_states`, `/left_arm/tcp_pose_world`, `/left_ft/wrench_compensated`.
+2. **Same ROS network:** the PC must use the same `ROS_DOMAIN_ID` as the robot (default 0). To use
+   another ID, put `ROS_DOMAIN_ID=<id>` in a file named `.env` in this folder.
+3. **Start the policy:**
+   ```bash
+   ./run_docker.sh --policy-name diffusion_rtc --checkpoint diffusion_50k
+   ```
+4. **Check before moving anything:** the node should log `action: [...]` about 30 times per second,
+   with small values (about 0.0005) and the gripper value at `1`. Watch it with
+   `tools/action_monitor/run_action_monitor.sh`.
+5. **Let the arm move:** the actions are applied by the Delta Extension in Isaac Sim (Fan Grasp Mode
+   **IL**, Arm Sync Mode **Per Frame** or **Per Task**, *Publish Policy Observations* **off**).
+   Use reduced speed limits, keep the e-stop within reach, and start the arm near where the
+   demonstrations started.
 
-With ROS 2 Jazzy installed natively:
+---
+
+## 3. Run in Isaac Sim
+
+The sim publishes the same topics as the real robot, so the policy node runs unchanged.
+
+1. **Isaac Sim:** open the fan scene with the Delta Extension
+   (see `delta_extension/README.md` for installing the extension). In the Delta Extension panel set:
+   - Fan Grasp Mode: **IL**
+   - Arm Sync Mode: **No Sync**
+   - **Publish Policy Observations**: on
+
+   Then press **Play**.
+   > Never turn on *Publish Policy Observations* while the real robot is on the same ROS domain.
+   > The sim and the robot would both publish on the robot's topics.
+2. **Start the policy** in a terminal, from this folder:
+   ```bash
+   ./run_docker.sh --policy-name diffusion_rtc --checkpoint diffusion_50k
+   ```
+3. **Start the task** in the Delta Extension panel. When the sim reaches the grasp step it
+   publishes a hand-off. The node logs `IL hand-off #1`, resets the policy, and from then on
+   the sim arm follows the actions.
+4. **Optional:** run `tools/action_monitor/run_action_monitor.sh` and open
+   http://localhost:8765 to plot the actions. The page's Save PNG / Save CSV buttons write to
+   `recordings/`.
+
+---
+
+## 4. Use the policy with depth
+
+Two policies were trained on the wrist **RGB image + depth image**:
+
+- `depth_inference_rtc`: the Diffusion Policy.
+- `depth_act`: ACT.
+
+The RGB-only `diffusion_rtc` and `act` stay as they were, so you can switch between them to compare.
 
 ```bash
-source /opt/ros/jazzy/setup.bash
-ros2 topic echo /il/grasp/action
+./run_docker.sh --policy-name depth_inference_rtc --checkpoint diffusion_50k   # depth diffusion, 50k (best val loss)
+./run_docker.sh --policy-name depth_inference_rtc                              # depth diffusion, 375k (default)
+./run_docker.sh --policy-name depth_act                                        # depth ACT, 375k (the only one)
 ```
 
-> ⚠️ `ros2` needs ROS 2 on the machine. Without it (`ros2: command not found`), run the same command
-> in a throwaway container from the policy image — it uses host networking, so it sees the node's
-> topic:
->
-> ```bash
-> docker run --rm -it --network host --entrypoint bash lerobot_ros2:latest -c \
->   'source /opt/ros/jazzy/setup.bash && ros2 topic echo /il/grasp/action'
-> ```
->
-> Or open a shell in the running policy container (`docker ps` lists it) and run it there:
-> `docker exec -it <container> bash`, then `source /opt/ros/jazzy/setup.bash && ros2 topic echo /il/grasp/action`.
-> The node's own terminal also logs every action as `action: [...]`.
+Everything else is the same as above: the robot ([2](#2-run-on-the-real-robot)), the sim
+([3](#3-run-in-isaac-sim)) and the bag test ([2a](#2a-dry-run-with-fake-input-recorded-bag-no-robot))
+already publish the depth topic `/camera_L/depth/aligned_depth_to_color`, so only the policy name
+changes.
 
-## 🔌 ROS Interface
-
-### Inputs
-
-| Topic | Message type | Preprocessed observation |
-|:--|:--|:--|
-| `/camera_L/color/image_raw/compressed` | `CompressedImage` | RGB: `256 × 256 × 3` |
-| `/camera_L/depth/aligned_depth_to_color` | `Image` | Depth: `256 × 256`, nearest-neighbor resize |
-| `/left_arm/joint_states` | `JointState` | Position: `(6,)`; velocity: `(6,)` |
-| `/left_arm/tcp_pose_world` | `PoseStamped` | EE-offset position: `(3,)`; quaternion: `(4,)` |
-| `/left_ft/wrench_compensated` | `WrenchStamped` | `[fx, fy, fz, tx, ty, tz]` |
-
-### Output
-
-| Topic | Message type | Format |
-|:--|:--|:--|
-| `/il/grasp/action` | `Float64MultiArray` | `[dx, dy, dz, drx, dry, drz, gripper]` |
-
-For `act`, `diffusion` and `diffusion_rtc`: position delta in metres and rotation delta as an axis-angle in radians, both in the
-world frame (apply the rotation by left multiplication, `R_next = R(drot) · R_now`), one action per
-1/30 s; gripper `1` = open, `0` = closed, threshold at `0.5`. Nothing in this repo subscribes to the
-topic yet — the consumer that turns actions into arm motion is still to be written.
-
-## 🤖 Real robot
-
-Checklist for running the fan-grasp policies (`act`, `diffusion_rtc`, `diffusion`) on the robot.
-They were trained on the RS-M90E7A left arm with its wrist camera (`camera_L`) in the fan-grasp
-scene; on a different arm, camera mount or scene they may not transfer even if everything below is
-wired correctly. None of them has run on hardware yet.
-
-### 1. Weights
-
-Not in git (see [Checkpoints](#-checkpoints)); copy them in with their checksum file and verify:
-
+**It works if** the startup log shows:
 ```text
-checkpoints/act/fan_grasp_act_v1/                # 197 MB, 7 files
-checkpoints/diffusion/fan_grasp_diffusion_v1/    # 1 GB, 7 files (diffusion and diffusion_rtc)
-checkpoints/SHA256SUMS
+loaded diffusion from /checkpoints/diffusion_depth/checkpoint_diffusion_50 ...
+warmed up with 3 unguided + 3 guided inferences ...
+depth input observation.images.wrist_depth: 0-1 m -> 255-1, no reading -> 0
 ```
+For `depth_act` the first line is `loaded act from /checkpoints/act_depth/checkpoint_act_375 ...`.
+
+**How depth reaches the model.** The node turns each depth frame into the same image the model was
+trained on:
+
+- 0 means no reading;
+- otherwise brightness goes from 255 at 0 m down to 1 at 1 m, and anything farther is 1;
+- the value is repeated in 3 channels.
+
+The range is set in `policies/depth_inference/config.yaml` and `policies/act_depth/config.yaml`
+(`depth_min_m`, `depth_max_m`). It must
+match the training data. At startup the node compares it with `depth_encoding.json` in the
+checkpoint folder and stops if they differ.
+
+**Checkpoints:** each folder holds the model files plus `depth_encoding.json`. The dataset for both
+is Robot_Friday `data/lerobot_data_depth`.
+
+- `checkpoints/diffusion_depth/checkpoint_diffusion_{50,375}/`, from Robot_Friday
+  `checkpoints/checkpoint_diffusion_depth/{050000,375000}/pretrained_model/`.
+- `checkpoints/act_depth/checkpoint_act_375/`, from Robot_Friday
+  `checkpoints/checkpoint_act_depth/375000/pretrained_model/`.
+
+**Limits:**
+- About 80% of depth pixels have no reading: the camera fills only a fixed window of the image,
+  and the centre loses more readings as the gripper gets close to the fan. The training data had
+  the same gaps, so this is not an error.
+- Depth diffusion: on the held-out demos it scored about the same as RGB-only at 50k (0.072 vs
+  0.073).
+- Depth ACT: its action error on recorded demos equals RGB-only ACT's (0.078 for both at 375k).
+  Both ACT models trained on all demos, so there is no held-out score.
+- Neither depth model has been tried on the robot yet.
+
+**See the depth the policy gets:** `./tools/depth_viewer/run_depth_viewer.sh` shows the raw depth
+topic next to the encoded image the model receives.
+
+---
+
+## 5. See what the policy looks at (Grad-CAM)
+
+Add `--gradcam` to any `act`, `depth_act`, `diffusion*` or `depth_inference*` run, then open the
+viewer in a second terminal:
 
 ```bash
-cd checkpoints && sha256sum -c SHA256SUMS      # all 14 files: OK
+./run_docker.sh --policy-name depth_act --gradcam      # terminal 1: policy + Grad-CAM
+./tools/gradcam_viewer/run_gradcam_viewer.sh            # terminal 2: live view (s = PNG, r = MP4)
 ```
 
-### 2. Docker image
+Each camera the policy uses is shown with a heat map on top: red regions drive the predicted
+motion most, blue ones not at all. The percentage is that camera's share, so with depth policies
+you can see how much they rely on RGB vs depth. The bottom line shows the motion being explained
+(sum of the next steps, in mm).
 
-Rebuild it once. The Dockerfile pins lerobot 0.6.2 and torch 2.11 / CUDA 13, which these checkpoints
-need (older lerobot rejects their `config.json`), and `run_docker.sh` never replaces an existing
-local `lerobot_ros2` image:
+- **What is explained:** how far the predicted actions are from "do nothing", over the motion
+  dims by default. `ros2 launch ... gradcam_target:=gripper` (or `position`, `rotation`, `all`)
+  explains those dims instead. When the policy predicts almost no motion, there is little to
+  explain and the map is mostly noise.
+- **Cost:** it runs on its own thread at up to 5 Hz (`gradcam_rate_hz` in `config/params.yaml`)
+  and doesn't change the actions. Measured with depth_act: actions stayed at 30 Hz. Per map on an
+  RTX 4070 Ti SUPER: ACT ~10–25 ms, diffusion ~100 ms and ~1.2 GB extra GPU memory.
+- **Diffusion:** the model only sees a 240×240 center crop, so an 8 px border stays blue. Its
+  sampling uses a fixed seed for the map, so successive maps differ only by the camera input.
+- Topic: `/policy/gradcam/image` (`sensor_msgs/Image`, rgb8). Code: `ros2_policy_inference/gradcam.py`.
+
+---
+
+## Reference
+
+### Policies
 
 ```bash
-docker compose -f docker/docker-compose.yml build policy-inference
+./run_docker.sh --policy-name <policy> [--checkpoint <name>]
 ```
 
-Needs an NVIDIA driver ≥ 580 (`nvidia-smi`). GPU memory: `act` ~0.3 GB, `diffusion`/`diffusion_rtc`
-~1.2 GB (measured on an RTX 4070 Ti SUPER).
+| `--policy-name` | What it is | Default checkpoint |
+|:--|:--|:--|
+| `diffusion_rtc` | Diffusion Policy, RGB camera. **Use this one on the robot** | `diffusion/checkpoint_diffusion_375` |
+| `diffusion` | same model without smooth chunking (pauses ~60 ms every 8 actions) | same |
+| `depth_inference_rtc` | Diffusion Policy, RGB **+ depth** camera | `diffusion_depth/checkpoint_diffusion_375` |
+| `depth_inference` | same without smooth chunking | same |
+| `act` | LeRobot ACT, RGB camera | `act/checkpoint_act_375` |
+| `depth_act` | LeRobot ACT, RGB **+ depth** camera | `act_depth/checkpoint_act_375` |
+| `liteflow` | InternVL3-1B + FLOWER (own image, weights downloaded automatically) | — |
+| `dummy` | outputs nothing useful; for testing the topics | — |
 
-### 3. Inputs the robot must publish
+`--checkpoint` picks another checkpoint from that policy's folder:
 
-The node waits until **all five** [input topics](#inputs) have arrived before its first action, so
-depth, TCP pose and F/T must be published even though `act`/`diffusion` only use the image, the joints
-and the gripper.
+| `--checkpoint` | diffusion / diffusion_rtc | depth_inference / depth_inference_rtc |
+|:--|:--|:--|
+| *(none)* | `diffusion/checkpoint_diffusion_375` | `diffusion_depth/checkpoint_diffusion_375` |
+| `diffusion_50k` | `diffusion/checkpoint_diffusion_50` | `diffusion_depth/checkpoint_diffusion_50` |
 
-- **Camera**: the wrist camera as JPEG `CompressedImage`, at **≥ 30 fps** (subscribed BEST_EFFORT).
-- **Joints**: exactly **6 arm positions in radians, in the training order** (`joint_0`…`joint_5`).
-  They are read in published order (`msg.position`), not matched by name — a different order or an
-  extra gripper joint breaks the state silently or fails the 7-D state check.
-- **ROS**: same `ROS_DOMAIN_ID` as the robot (default 0; set it in a repo-root `.env`). The container
-  uses host networking and CycloneDDS.
+The 50k checkpoints had the lowest loss on held-out demonstrations (0.073 RGB, 0.072 RGB+depth,
+against 0.141 and 0.123 at 375k). Neither has been tried on the robot yet.
 
-### 4. Start pose
+Run only **one** policy at a time. All of them publish on the same topic. Stop one with Ctrl+C
+(`docker ps` lists running containers) before starting another.
 
-Start inside the training range, ideally where the demonstrations started; far outside it the
-policies extrapolate. Joint ranges in the training data (radians):
+### Problems
 
-| `joint_0` | `joint_1` | `joint_2` | `joint_3` | `joint_4` | `joint_5` |
-|:--|:--|:--|:--|:--|:--|
-| −0.03 … 0.12 | −0.48 … 0.60 | −1.57 … 0.46 | 1.76 … 3.85 | 3.09 … 3.31 | −1.66 … −1.52 |
-
-### 5. Applying the actions
-
-Nothing in this repo moves the arm: the robot-side controller must apply every message on
-`/il/grasp/action` (7 values, 30 Hz) the way the training data was recorded:
-
-- `[0:3]` position delta in metres, **world frame**, at the **TCP = Link_6 + 0.2204 m along Link_6's
-  z axis** (`ee_pos_offset` in `config/params.yaml`). Applying it at a different point gives
-  few-mm errors whenever the tool rotates.
-- `[3:6]` rotation delta as a rotation vector, world frame, **left-multiplied**:
-  `R_next = R(drot) · R_now`.
-- `[6]` gripper: **≥ 0.5 = open, < 0.5 = close**. The node feeds its own last gripper command back
-  as state and starts open (`initial_gripper_open`).
-- One message = one 1/30 s of motion. Apply every message; applying them at another rate changes
-  the arm's speed by the same factor. Typical steps are ~0.5 mm; the largest in training was 5.2 mm
-  and 0.0089 rad.
-
-### 6. Which policy
-
-```bash
-./run_docker.sh --policy-name act            # first choice
-./run_docker.sh --policy-name diffusion_rtc  # diffusion, smooth and a steady 30 Hz
-```
-
-Avoid plain `diffusion` on the robot: its ~60 ms pause per chunk makes the node skip timer ticks, so
-it publishes at only ~22 Hz and the arm moves ~26% slower than demonstrated. Stop the running node
-before switching, or two nodes publish on `/il/grasp/action` at once.
-
-### 7. First run
-
-1. **Without moving the arm**: run the node against the robot's topics (or a
-   recorded bag, see *Test with a recorded bag* above) and [check the output](#-check-output): about 30
-   messages/s, small values, gripper at 1. The startup log should show `loaded act ...` (or
-   `loaded diffusion ...`) and `requires 30.0 Hz`; `diffusion_rtc` also logs `RTC (guided ...)` at
-   startup and `RTC: ... stalls 0` every 100 chunks.
-2. **On the robot**: reduced speed limits, e-stop within reach, short runs. Watch for the arm
-   drifting off the demonstrated path the longer it runs; that is the failure mode of delta actions.
-
-## 🛠️ Development
-
-### Add a policy
-
-1. Subclass `PolicyModel` in `policies/your_policy.py`; see `policies/dummy_policy.py`. A policy
-   with its own checkpoint/settings gets a subpackage with a `config.yaml` instead; see
-   `policies/diffusion/`.
-2. Define observation and action specs in `policies/base_policy.py`.
-3. Register the policy in `policies/__init__.py` through `create_policy()`.
-4. If its actions are tied to a fixed control period, set `inference_rate_hz` on the class; the
-   node then ticks at that rate instead of `config/params.yaml`'s.
-
-### Publish a Docker image
-
-Rebuild and publish only when a Dockerfile or its dependencies change. Needs
-a token with `api` scope (higher than the `read_api` one from Setup) in
-`~/.gitlab_token` or `$GITLAB_TOKEN`:
-
-```bash
-./push_docker.sh             # act/pi/dummy/diffusion/diffusion_rtc image
-./push_docker.sh --liteflow   # liteflow image
-```
+| You see | Meaning / fix |
+|:--|:--|
+| `waiting for all observation topics...` / `no publisher found for ...` | one of the five input topics is missing. Start the robot, sim or bag, and check `ROS_DOMAIN_ID` |
+| `checkpoint '...' not found` | the folder isn't under `checkpoints/`; the message lists the ones that are there |
+| `could not select device driver "nvidia"` | NVIDIA Container Toolkit missing (install step 3) |
+| `permission denied ... docker.sock` | not in the `docker` group (install step 2, then log out and back in) |
+| `No GitLab token found` | save a token (install step 4a) or build the image (4b) |
+| `obs['depth'] missing` | `depth_inference*` and `depth_act` need `/camera_L/depth/aligned_depth_to_color` |
+| `ros2: command not found` on the host | expected: ROS is only inside the container. Use the commands above |

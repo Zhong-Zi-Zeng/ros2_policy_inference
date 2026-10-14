@@ -5,8 +5,8 @@
 # Mounted read-only from the host (docker-compose.yml's checkpoints volume): the lerobot
 # checkpoint directory holding config.json, model.safetensors and the pre/post-processors.
 # Copy the trained run's checkpoints/checkpoint_act/375000/pretrained_model/ folder to
-# <repo>/checkpoints/act/fan_grasp_act_v1.
-checkpoint_dir: /checkpoints/act/fan_grasp_act_v1
+# <repo>/checkpoints/act/checkpoint_act_375.
+checkpoint_dir: /checkpoints/act/checkpoint_act_375
 
 device: cuda
 

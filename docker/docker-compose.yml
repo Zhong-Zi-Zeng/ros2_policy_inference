@@ -14,6 +14,10 @@
 # Both services build the same package; only the environment differs (see
 # Dockerfile vs Dockerfile.liteflow), so pick a service by which policy_name
 # you're running, not by editing the command.
+#
+# FASTDDS_BUILTIN_TRANSPORTS=UDPv4 disables Fast DDS shared memory: the container
+# runs as root without the host's /dev/shm, so with SHM it discovers host-side
+# publishers (e.g. Isaac Sim) but never receives their messages.
 
 name: ros2_policy_inference
 
@@ -26,6 +30,7 @@ services:
     network_mode: host
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
     volumes:
       - ..:/workspace/src/ros2_policy_inference
       - ${CHECKPOINT_DIR:-../checkpoints}:/checkpoints:ro
@@ -48,6 +53,7 @@ services:
     network_mode: host
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - FASTDDS_BUILTIN_TRANSPORTS=UDPv4
     volumes:
       - ..:/workspace/src/ros2_policy_inference
       # Not :ro like the other service: trust_remote_code's AutoModel.from_pretrained writes

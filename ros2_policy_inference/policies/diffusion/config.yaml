@@ -4,8 +4,12 @@
 
 # Mounted read-only from the host (docker-compose.yml's checkpoints volume): the lerobot
 # checkpoint directory holding config.json, model.safetensors and the pre/post-processors.
-# Copy the bundle's policy/ folder to <repo>/checkpoints/diffusion/fan_grasp_diffusion_v1.
-checkpoint_dir: /checkpoints/diffusion/fan_grasp_diffusion_v1
+# Two checkpoints of the same RGB-only training run (Robot_Friday checkpoints/checkpoint_diffusion):
+#   checkpoint_diffusion_375  step 375k, the final one (formerly fan_grasp_diffusion_v1)
+#   checkpoint_diffusion_50   step 50k: lower validation loss on the 10 held-out episodes
+#                             (0.073 vs 0.141), not yet tried on the robot
+checkpoint_dir: /checkpoints/diffusion/checkpoint_diffusion_375
+# checkpoint_dir: /checkpoints/diffusion/checkpoint_diffusion_50
 
 device: cuda
 

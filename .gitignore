@@ -7,3 +7,6 @@ checkpoints/
 
 # Recorded ROS 2 bags used for offline testing (multi-GB)
 bags/
+
+# Saved action-monitor runs (tools/action_monitor)
+recordings/

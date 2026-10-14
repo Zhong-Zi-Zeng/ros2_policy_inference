@@ -5,7 +5,7 @@
 #
 # --policy-name picks which policy to launch and, from that, which image:
 # liteflow runs in its own image (ROS2 + CUDA + InternVL3/FLOWER — see
-# Dockerfile.liteflow), everything else (act/pi/dummy/diffusion/diffusion_rtc) in the shared
+# Dockerfile.liteflow), everything else (act/depth_act/pi/dummy/diffusion/diffusion_rtc/depth_inference) in the shared
 # lerobot one. Either way, code is mounted in and colcon-built fresh by
 # entrypoint.sh on every container start, so pulling an older image is
 # fine as long as its Dockerfile hasn't changed. Rebuild + push_docker.sh
@@ -15,17 +15,37 @@
 #   ./run_docker.sh --policy-name diffusion  # docker compose run, diffusion policy
 #   ./run_docker.sh --policy-name liteflow   # docker compose run, liteflow policy
 #   ./run_docker.sh --policy-name liteflow bash   # interactive shell instead
+#   ./run_docker.sh --policy-name diffusion_rtc --checkpoint diffusion_50k
+#       # another checkpoint of that policy: a folder under checkpoints/<policy folder>/, found as
+#       # given, as checkpoint_<name>, or with a trailing "k" dropped (policies/__init__.py)
+#   ./run_docker.sh --policy-name depth_act --gradcam
+#       # also publish Grad-CAM overlays on /policy/gradcam/image (tools/gradcam_viewer shows them)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-if [ "${1:-}" != "--policy-name" ] || [ -z "${2:-}" ]; then
-    echo "Usage: $0 --policy-name <dummy|act|pi|liteflow|diffusion|diffusion_rtc> [command...]" >&2
+usage() {
+    echo "Usage: $0 --policy-name <dummy|act|depth_act|pi|liteflow|diffusion|diffusion_rtc|depth_inference|depth_inference_rtc>" \
+         "[--checkpoint <name>] [--gradcam] [command...]" >&2
+    exit 1
+}
+POLICY_NAME=""
+CHECKPOINT=""
+GRADCAM=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --policy-name) [ -n "${2:-}" ] || usage; POLICY_NAME="$2"; shift 2 ;;
+        --checkpoint)  [ -n "${2:-}" ] || usage; CHECKPOINT="$2"; shift 2 ;;
+        --gradcam)     GRADCAM=1; shift ;;
+        *) break ;;
+    esac
+done
+[ -n "$POLICY_NAME" ] || usage
+if { [ -n "$CHECKPOINT" ] || [ -n "$GRADCAM" ]; } && [ $# -gt 0 ]; then
+    echo "[run_docker] --checkpoint / --gradcam only apply to the default launch command, not to: $*" >&2
     exit 1
 fi
-POLICY_NAME="$2"
-shift 2
 
 if [ "$POLICY_NAME" = "liteflow" ]; then
     IMAGE_NAME="liteflow_ros2:latest"
@@ -83,7 +103,8 @@ fi
 
 if [ $# -eq 0 ]; then
     "${COMPOSE[@]}" run --rm "$SERVICE" \
-        ros2 launch ros2_policy_inference inference.launch.py "policy_name:=$POLICY_NAME"
+        ros2 launch ros2_policy_inference inference.launch.py "policy_name:=$POLICY_NAME" \
+        ${CHECKPOINT:+"checkpoint:=$CHECKPOINT"} ${GRADCAM:+"gradcam_enable:=true"}
 else
     "${COMPOSE[@]}" run --rm "$SERVICE" "$@"
 fi
