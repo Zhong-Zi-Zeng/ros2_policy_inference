@@ -1,8 +1,8 @@
 # π₀.₅ checkpoint + inference knobs, read by pi_policy.py. Paths are inside the container
 # (checkpoints/ is mounted at /checkpoints).
-ckpt_path: "/checkpoints/pi05_grasp_fan/pretrained_model"
+ckpt_path: "/checkpoints/pi05_grasp_fan_depth_97_30k"
 task: "grasp the fan"
-depth_info_path: "/checkpoints/pi05_grasp_fan/depth_info.json"
+depth_info_path: "/checkpoints/pi05_grasp_fan_depth_97_30k/depth_info.json"
 
 # Optional (unset = checkpoint default / auto):
 # device: "cuda"

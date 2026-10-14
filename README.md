@@ -38,6 +38,12 @@ Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-nat
 | `pi` | π₀.₅ (pi05) LeRobot checkpoint, working |
 | `liteflow` | InternVL3-1B + FLOWER, working |
 
+Checkpoints hosted on Hugging Face (e.g. `pi`'s) are downloaded with:
+```bash
+hf download <hf_repo_id> --local-dir checkpoints/<name>
+```
+then point that policy's `ckpt_path` (in its `config.yaml`) at `/checkpoints/<name>`.
+
 ### 💻 Local
 
 Requires ROS 2 Jazzy and the policy's dependencies.
