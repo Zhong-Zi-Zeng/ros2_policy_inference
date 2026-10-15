@@ -22,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 if [ "${1:-}" != "--policy-name" ] || [ -z "${2:-}" ]; then
-    echo "Usage: $0 --policy-name <dummy|act|pi|liteflow> [command...]" >&2
+    echo "Usage: $0 --policy-name <dummy|act|pi|groot|liteflow> [command...]" >&2
     exit 1
 fi
 POLICY_NAME="$2"

@@ -1,7 +1,7 @@
 # π₀.₅ checkpoint + inference knobs, read by pi_policy.py. Paths are inside the container
 # (checkpoints/ is mounted at /checkpoints).
 ckpt_path: "/checkpoints/pi05_grasp_fan_depth_97"
-task: "grasp the fan"
+task: "pick up the fan by its handle"
 depth_info_path: "/checkpoints/pi05_grasp_fan_depth_97/depth_info.json"
 state_keys: [joint_pos, gripper_state]
 

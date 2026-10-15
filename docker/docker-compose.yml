@@ -23,9 +23,14 @@ services:
     network_mode: host
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      # network_mode: host shares DDS participant indices with every ROS node on the host;
+      # Cyclone's default cap (~10) runs out when many nodes are up.
+      - CYCLONEDDS_URI=<CycloneDDS><Domain><Discovery><MaxAutoParticipantIndex>100</MaxAutoParticipantIndex></Discovery></Domain></CycloneDDS>
     volumes:
       - ..:/workspace/src/ros2_policy_inference
       - ${CHECKPOINT_DIR:-../checkpoints}:/checkpoints:ro
+      # Keep HF downloads (e.g. GR00T's 6.5 GB base model) across `run --rm` containers.
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
     deploy:
       resources:
         reservations:
@@ -45,6 +50,9 @@ services:
     network_mode: host
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      # network_mode: host shares DDS participant indices with every ROS node on the host;
+      # Cyclone's default cap (~10) runs out when many nodes are up.
+      - CYCLONEDDS_URI=<CycloneDDS><Domain><Discovery><MaxAutoParticipantIndex>100</MaxAutoParticipantIndex></Discovery></Domain></CycloneDDS>
     volumes:
       - ..:/workspace/src/ros2_policy_inference
       # Not :ro like the other service: trust_remote_code's AutoModel.from_pretrained writes
