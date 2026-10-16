@@ -1,7 +1,7 @@
 # GR00T N1.7 checkpoint + inference knobs, read by groot_policy.py. Paths are inside the container
 # (checkpoints/ is mounted at /checkpoints). Expects a LeRobot-trained GR00T checkpoint
 # (config.json + model weights + policy_preprocessor.json / policy_postprocessor.json).
-ckpt_path: "/checkpoints/GR00T_grasp_fan_depth_97_batch_size_8"
+ckpt_path: "/checkpoints/gr00t_grasp-fan_Le-002_20k_v1"
 task: "pick up the fan by its handle"
 state_keys: [joint_pos, gripper_state]
 
@@ -15,7 +15,7 @@ cameras:
   observation.images.depth:
     source: depth
     encoding: depth
-    info_path: "/checkpoints/GR00T_grasp_fan_depth_97_batch_size_8/depth_info.json"
+    info_path: "/checkpoints/gr00t_grasp-fan_Le-002_20k_v1/depth_info.json"
 
 # Optional (unset = checkpoint default / auto):
 # device: "cuda"

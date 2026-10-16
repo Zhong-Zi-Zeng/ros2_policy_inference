@@ -46,7 +46,7 @@ ENV PATH="/opt/venv/bin:${PATH}"
 RUN pip install --no-cache-dir \
         --extra-index-url ${TORCH_INDEX_URL} torch torchvision \
     && pip install --no-cache-dir \
-        "lerobot[pi]${LEROBOT_VERSION:+==${LEROBOT_VERSION}}" \
+        "lerobot[pi,diffusion,groot]${LEROBOT_VERSION:+==${LEROBOT_VERSION}}" \
         "transformers>=5.4.0,<5.6.0" \
         scipy
 

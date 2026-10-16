@@ -1,0 +1,22 @@
+# Diffusion Policy (lerobot) checkpoint + inference knobs, read by diffusion_policy.py. Paths are
+# inside the container (checkpoints/ is mounted at /checkpoints).
+ckpt_path: "/checkpoints/checkpoint_diffusion_50"
+task: "pick up the fan by its handle"
+state_keys: [joint_pos, gripper_state]
+
+# Which obs each of the checkpoint's image features comes from, and how to encode it.
+# Must cover every image feature the checkpoint declares. encoding: rgb | depth (depth needs info_path).
+cameras:
+  observation.images.wrist:
+    source: rgb
+    encoding: rgb
+  observation.images.wrist_depth:
+    source: depth
+    encoding: depth
+    info_path: "/checkpoints/checkpoint_diffusion_50/depth_encoding.json"
+
+# Optional (unset = checkpoint default / auto):
+# device: "cuda"
+# n_action_steps: 8
+# num_inference_steps: 10
+# warmup: true

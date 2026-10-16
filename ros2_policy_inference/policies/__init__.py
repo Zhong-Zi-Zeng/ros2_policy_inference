@@ -23,4 +23,7 @@ def create_policy(name: str) -> PolicyModel:
     if name == "groot":
         from .groot.groot_policy import GrootPolicyModel
         return GrootPolicyModel()
-    raise ValueError(f"unknown policy_name '{name}' (options: dummy, act, pi, liteflow, groot)")
+    if name == "diffusion":
+        from .diffusion.diffusion_policy import DiffusionPolicyModel
+        return DiffusionPolicyModel()
+    raise ValueError(f"unknown policy_name '{name}' (options: dummy, act, pi, liteflow, groot, diffusion)")

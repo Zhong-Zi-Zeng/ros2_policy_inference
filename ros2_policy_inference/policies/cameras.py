@@ -41,7 +41,11 @@ def _make_encoder(spec):
     if encoding == "depth":
         with open(spec["info_path"]) as f:
             info = json.load(f)
-        d_min, d_max = float(info["depth_min"]), float(info["depth_max"])  # mm
+        # two info schemas in the wild: depth_min/depth_max (mm) or depth_min_m/depth_max_m (metres)
+        if "depth_min_m" in info:
+            d_min, d_max = float(info["depth_min_m"]) * 1000.0, float(info["depth_max_m"]) * 1000.0
+        else:
+            d_min, d_max = float(info["depth_min"]), float(info["depth_max"])
         return lambda depth: encode_depth(depth, d_min, d_max)
     raise ValueError(f"unknown camera encoding '{encoding}' (known: rgb, depth)")
 
