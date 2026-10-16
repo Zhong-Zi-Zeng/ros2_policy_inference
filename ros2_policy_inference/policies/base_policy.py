@@ -32,9 +32,6 @@ class PolicyModel(ABC):
           rgb          (image_size, image_size, 3) uint8
           depth        (image_size, image_size) uint16/float32
           joint_pos    (6,) float32
-          joint_vel    (6,) float32
-          ee_pos       (3,) float32
-          ee_quat      (4,) float32, xyzw
           gripper_state  scalar float32, 1.0=open / 0.0=closed — the
                          policy's own previous gripper output (or the
                          initial "open" state before the first prediction)

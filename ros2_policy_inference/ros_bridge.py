@@ -10,7 +10,7 @@ un-synchronised header.stamps.
 
 QoS — camera topics are typically published BEST_EFFORT (sensor-data QoS);
 a RELIABLE subscriber silently receives nothing from them, so RGB/depth use
-a BEST_EFFORT profile while joint_state/tcp_pose/F-T stay RELIABLE.
+a BEST_EFFORT profile while joint_state/F-T stay RELIABLE.
 
 Gripper state is intentionally NOT subscribed here — see
 PolicyInferenceNode, which feeds the policy's own previous gripper output
@@ -21,7 +21,7 @@ import time
 import numpy as np
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CompressedImage, Image, JointState
-from geometry_msgs.msg import PoseStamped, WrenchStamped
+from geometry_msgs.msg import WrenchStamped
 from std_msgs.msg import Float64MultiArray
 
 
@@ -32,7 +32,6 @@ class RosBridge:
         self._joint = None
         self._rgb = None
         self._depth = None
-        self._pose = None
         self._ft = None
 
         # topic key -> topic name, for check_health(); last_seen tracked
@@ -42,7 +41,6 @@ class RosBridge:
             "joint": cfg.joint_state_topic,
             "rgb": cfg.rgb_topic,
             "depth": cfg.depth_topic,
-            "tcp_pose": cfg.tcp_pose_topic,
             "ft": cfg.ft_sensor_topic,
         }
         self._last_seen = {}
@@ -56,7 +54,6 @@ class RosBridge:
         node.create_subscription(JointState, cfg.joint_state_topic, self._on_joint, 10)
         node.create_subscription(CompressedImage, cfg.rgb_topic, self._on_rgb, sensor_qos)
         node.create_subscription(Image, cfg.depth_topic, self._on_depth, sensor_qos)
-        node.create_subscription(PoseStamped, cfg.tcp_pose_topic, self._on_pose, 10)
         node.create_subscription(WrenchStamped, cfg.ft_sensor_topic, self._on_ft, 10)
 
         self._action_pub = node.create_publisher(Float64MultiArray, cfg.action_topic, 10)
@@ -66,20 +63,13 @@ class RosBridge:
         log.info(f"  joint    = {cfg.joint_state_topic}")
         log.info(f"  rgb      = {cfg.rgb_topic}  (CompressedImage, BEST_EFFORT)")
         log.info(f"  depth    = {cfg.depth_topic}  (BEST_EFFORT)")
-        log.info(f"  tcp_pose = {cfg.tcp_pose_topic}")
         log.info(f"  ft       = {cfg.ft_sensor_topic}")
         log.info(f"  action   = {cfg.action_topic}  (Float64MultiArray, published)")
 
     # ---------- per-topic callbacks ----------
 
     def _on_joint(self, msg):
-        joint_pos = np.asarray(msg.position, dtype=np.float32)
-        joint_vel = (
-            np.asarray(msg.velocity, dtype=np.float32)
-            if len(msg.velocity) == len(msg.position)
-            else np.zeros_like(joint_pos)
-        )
-        self._joint = {"joint_pos": joint_pos, "joint_vel": joint_vel}
+        self._joint = {"joint_pos": np.asarray(msg.position, dtype=np.float32)}
         self._last_seen["joint"] = time.monotonic()
 
     def _on_rgb(self, msg):
@@ -89,15 +79,6 @@ class RosBridge:
     def _on_depth(self, msg):
         self._depth = {"depth": self._image_msg_to_array(msg)}
         self._last_seen["depth"] = time.monotonic()
-
-    def _on_pose(self, msg):
-        p = msg.pose.position
-        o = msg.pose.orientation
-        self._pose = {
-            "ee_pos": np.array([p.x, p.y, p.z], dtype=np.float64),
-            "ee_quat": np.array([o.x, o.y, o.z, o.w], dtype=np.float64),  # xyzw
-        }
-        self._last_seen["tcp_pose"] = time.monotonic()
 
     def _on_ft(self, msg):
         f = msg.wrench.force
@@ -152,16 +133,15 @@ class RosBridge:
 
     def get_latest(self):
         """Most recent message from every topic, merged into one dict.
-        Returns None until joint + rgb + depth + tcp_pose + ft have each
+        Returns None until joint + rgb + depth + ft have each
         been received at least once."""
         if (self._joint is None or self._rgb is None or self._depth is None
-                or self._pose is None or self._ft is None):
+                or self._ft is None):
             return None
         out = {}
         out.update(self._joint)
         out.update(self._rgb)
         out.update(self._depth)
-        out.update(self._pose)
         out.update(self._ft)
         return out
 

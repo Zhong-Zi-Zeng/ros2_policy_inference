@@ -19,18 +19,16 @@ from dataclasses import dataclass
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from scipy.spatial.transform import Rotation
 
 from .policies import create_policy
 from .policies.base_policy import ACTION_DIM
-from .preprocessing import apply_ee_offset, resize_image
+from .preprocessing import resize_image
 from .ros_bridge import RosBridge
 
 _DEFAULT_PARAMS = dict(
     joint_state_topic="/left_arm/joint_states",
     rgb_topic="/camera_L/color/image_raw/compressed",
     depth_topic="/camera_L/depth/aligned_depth_to_color",
-    tcp_pose_topic="/left_arm/tcp_pose_world",
     ft_sensor_topic="/left_ft/wrench_compensated",
     action_topic="/il/grasp/action",
     # Which policies/*.py implementation to run — see policies/__init__.py.
@@ -38,8 +36,6 @@ _DEFAULT_PARAMS = dict(
     inference_rate_hz=10.0,
     topic_timeout_sec=2.0,
     image_size=256,
-    ee_pos_offset=[0.0, 0.0, 0.2204],
-    ee_rot_offset_xyzw=[0.70711, 0.0, 0.70711, 0.0],
     initial_gripper_open=True,
     gripper_open_threshold=0.5,
 )
@@ -50,15 +46,12 @@ class InferenceConfig:
     joint_state_topic: str
     rgb_topic: str
     depth_topic: str
-    tcp_pose_topic: str
     ft_sensor_topic: str
     action_topic: str
     policy_name: str
     inference_rate_hz: float
     topic_timeout_sec: float
     image_size: int
-    ee_pos_offset: list
-    ee_rot_offset_xyzw: list
     initial_gripper_open: bool
     gripper_open_threshold: float
 
@@ -68,9 +61,6 @@ class PolicyInferenceNode(Node):
         super().__init__("policy_inference_node")
         cfg = self._load_config()
         self.cfg = cfg
-
-        self._ee_pos_offset = np.array(cfg.ee_pos_offset, dtype=np.float64)
-        self._ee_rot_offset = Rotation.from_quat(cfg.ee_rot_offset_xyzw)
 
         self.bridge = RosBridge(self, cfg)
         self.policy = policy if policy is not None else create_policy(cfg.policy_name)
@@ -119,17 +109,10 @@ class PolicyInferenceNode(Node):
         )
 
     def _build_obs(self, ros_data):
-        ee_pos, ee_quat = apply_ee_offset(
-            ros_data["ee_pos"], ros_data["ee_quat"],
-            self._ee_pos_offset, self._ee_rot_offset,
-        )
         return {
             "rgb": resize_image(ros_data["rgb"], self.cfg.image_size, is_depth=False),
             "depth": resize_image(ros_data["depth"], self.cfg.image_size, is_depth=True),
             "joint_pos": ros_data["joint_pos"],
-            "joint_vel": ros_data["joint_vel"],
-            "ee_pos": ee_pos.astype(np.float32),
-            "ee_quat": ee_quat.astype(np.float32),
             "gripper_state": np.float32(self._gripper_state),
             "ft_wrench": ros_data["ft_wrench"],
         }

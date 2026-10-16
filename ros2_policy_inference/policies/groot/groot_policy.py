@@ -1,5 +1,4 @@
 """GR00T N1.7 policy: runs a LeRobot-trained GR00T checkpoint, configured by config.yaml."""
-import json
 import os
 import time
 from collections import deque
@@ -9,6 +8,7 @@ import yaml
 from rclpy.logging import get_logger
 
 from ..base_policy import ACTION_DIM, PolicyModel
+from ..cameras import build_cameras
 
 try:
     import transformers  # noqa: F401  needed by lerobot's groot, only installed with lerobot[groot]
@@ -29,7 +29,7 @@ _CONFIG_PATH = next(
     None,
 )
 
-_STATE_SEGMENTS = {"joint_pos": 6, "joint_vel": 6, "ee_pos": 3, "ee_quat": 4, "gripper_state": 1, "ft_wrench": 6}
+_STATE_SEGMENTS = {"joint_pos": 6, "gripper_state": 1, "ft_wrench": 6}
 
 
 class GrootPolicyModel(PolicyModel):
@@ -53,13 +53,7 @@ class GrootPolicyModel(PolicyModel):
         self._n_action_steps = policy_cfg.n_action_steps
         self._chunk = deque()
 
-        cams = list(policy_cfg.image_features)
-        self._rgb_key = cfg.get("rgb_key") or next(k for k in cams if "depth" not in k)
-        self._depth_key = cfg.get("depth_key") or next((k for k in cams if "depth" in k), None)
-        if self._depth_key:
-            with open(cfg["depth_info_path"]) as f:
-                info = json.load(f)
-            self._depth_min, self._depth_max = float(info["depth_min"]), float(info["depth_max"])  # mm
+        self._cameras = build_cameras(cfg["cameras"], policy_cfg.image_features, ckpt_path)
 
         state_dim = policy_cfg.input_features[OBS_STATE].shape[0]
         self._state_keys = cfg["state_keys"]
@@ -75,10 +69,10 @@ class GrootPolicyModel(PolicyModel):
 
         self._log.info(
             f"groot loaded from {ckpt_path}: task='{self._task}', state={list(self._state_keys)}, "
-            f"rgb={self._rgb_key}, depth={self._depth_key}, n_action_steps={self._n_action_steps}"
+            f"cameras={list(self._cameras)}, n_action_steps={self._n_action_steps}"
         )
         if cfg.get("warmup", True):
-            self._warmup(policy_cfg.input_features[self._rgb_key].shape[1:])
+            self._warmup({k: policy_cfg.input_features[k].shape[1:] for k in self._cameras})
 
     def reset(self):
         self._chunk.clear()
@@ -89,9 +83,8 @@ class GrootPolicyModel(PolicyModel):
     def predict(self, obs: dict) -> np.ndarray:
         # Only touch the GPU when the chunk runs out; queued actions are popped straight from CPU.
         if not self._chunk:
-            frame = {self._rgb_key: np.ascontiguousarray(obs["rgb"], dtype=np.uint8), OBS_STATE: self._build_state(obs)}
-            if self._depth_key:
-                frame[self._depth_key] = self._depth_frame(obs["depth"])
+            frame = {key: encode(obs[source]) for key, (source, encode) in self._cameras.items()}
+            frame[OBS_STATE] = self._build_state(obs)
             self._chunk.extend(self._infer_chunk(frame))
         return self._chunk.popleft()
 
@@ -112,22 +105,10 @@ class GrootPolicyModel(PolicyModel):
     def _build_state(self, obs):
         return np.concatenate([np.asarray(obs[k], dtype=np.float32).ravel() for k in self._state_keys])
 
-    def _depth_frame(self, depth):
-        """Same encoding as the dataset conversion: clip to [min, max], near=bright,
-        valid -> 1..255, invalid (0/NaN) -> 0, grey replicated to 3 channels."""
-        raw = np.asarray(depth, dtype=np.float32)
-        if np.issubdtype(np.asarray(depth).dtype, np.floating):
-            raw = raw * 1000.0  # 32FC1 is metres, the range is mm
-        valid = np.isfinite(raw) & (raw > 0)
-        x = np.clip((raw - self._depth_min) / (self._depth_max - self._depth_min), 0.0, 1.0)
-        gray = np.where(valid, 1.0 + np.round((1.0 - x) * 254.0), 0.0).astype(np.uint8)
-        return np.repeat(gray[:, :, None], 3, axis=2)
-
-    def _warmup(self, hw):
-        frame = {self._rgb_key: np.zeros((*hw, 3), np.uint8),
-                 OBS_STATE: np.zeros(sum(_STATE_SEGMENTS[k] for k in self._state_keys), np.float32)}
-        if self._depth_key:
-            frame[self._depth_key] = np.zeros((*hw, 3), np.uint8)
+    def _warmup(self, shapes):
+        """shapes: image feature -> (H, W). Both encodings produce (H, W, 3) uint8."""
+        frame = {key: np.zeros((*hw, 3), np.uint8) for key, hw in shapes.items()}
+        frame[OBS_STATE] = np.zeros(sum(_STATE_SEGMENTS[k] for k in self._state_keys), np.float32)
         self._infer_chunk(frame)
         self.reset()
 

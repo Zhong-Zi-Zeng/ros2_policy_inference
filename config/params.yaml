@@ -4,7 +4,6 @@ policy_inference_node:
     joint_state_topic: "/left_arm/joint_states"
     rgb_topic: "/camera_L/color/image_raw/compressed"
     depth_topic: "/camera_L/depth/aligned_depth_to_color"
-    tcp_pose_topic: "/left_arm/tcp_pose_world"
     ft_sensor_topic: "/left_ft/wrench_compensated"
 
     # Topic to publish the predicted action to.
@@ -24,10 +23,6 @@ policy_inference_node:
     # Camera images are resized to image_size x image_size before being fed
     # to the policy (same size the training data was recorded at).
     image_size: 256
-
-    # Link_6 -> TCP offset
-    ee_pos_offset: [0.0, 0.0, 0.2204]
-    ee_rot_offset_xyzw: [0.70711, 0.0, 0.70711, 0.0]
 
     # Gripper setting
     initial_gripper_open: true
