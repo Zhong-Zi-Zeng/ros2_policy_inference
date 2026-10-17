@@ -26,4 +26,7 @@ def create_policy(name: str) -> PolicyModel:
     if name == "diffusion":
         from .diffusion.diffusion_policy import DiffusionPolicyModel
         return DiffusionPolicyModel()
-    raise ValueError(f"unknown policy_name '{name}' (options: dummy, act, pi, liteflow, groot, diffusion)")
+    if name == "rl_ppo":
+        from .rl_ppo.rl_ppo_policy import RLPPOPolicyModel
+        return RLPPOPolicyModel()
+    raise ValueError(f"unknown policy_name '{name}' (options: dummy, act, pi, liteflow, groot, diffusion, rl_ppo)")

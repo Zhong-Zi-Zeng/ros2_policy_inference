@@ -16,6 +16,7 @@
 #   ./run_docker.sh --policy-name act        # docker compose run, act policy
 #   ./run_docker.sh --policy-name liteflow   # docker compose run, liteflow policy
 #   ./run_docker.sh --policy-name liteflow bash   # interactive shell instead
+#   ./run_docker.sh --policy-name rl_ppo    # rl ppo policy
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -32,6 +33,11 @@ if [ "$POLICY_NAME" = "liteflow" ]; then
     IMAGE_NAME="liteflow_ros2:latest"
     PACKAGE_NAME="liteflow-ros2-docker"
     SERVICE="policy-inference-liteflow"
+elif [ "$POLICY_NAME" = "rl_ppo" ]; then
+    IMAGE_NAME="rl_ppo_ros2:latest"
+    PACKAGE_NAME="rl-ppo-ros2-docker"
+    SERVICE="policy-inference-rl-ppo"
+    LAUNCH_ARGS=("inference_rate_hz:=60.0")
 else
     IMAGE_NAME="lerobot_ros2:latest"
     PACKAGE_NAME="lerobot-ros2-docker"
@@ -59,6 +65,7 @@ if ! docker image inspect "$IMAGE_NAME" &> /dev/null; then
     gunzip -c "$TMP_TAR" | docker load
 fi
 
+LAUNCH_ARGS=()
 if [ "$POLICY_NAME" = "liteflow" ] && [ ! -s "checkpoints/liteflow/step_20000_ema/config.json" ]; then
     echo "[run_docker] liteflow checkpoint not found locally, fetching..."
     ./ros2_policy_inference/policies/liteflow/fetch_weights.sh
@@ -66,7 +73,8 @@ fi
 
 if [ $# -eq 0 ]; then
     docker compose -f docker/docker-compose.yml run --rm "$SERVICE" \
-        ros2 launch ros2_policy_inference inference.launch.py "policy_name:=$POLICY_NAME"
+        ros2 launch ros2_policy_inference inference.launch.py "policy_name:=$POLICY_NAME" "${LAUNCH_ARGS[@]}"
+        # ros2 launch ros2_policy_inference inference.launch.py "policy_name:=$POLICY_NAME" 
 else
     docker compose -f docker/docker-compose.yml run --rm "$SERVICE" "$@"
 fi

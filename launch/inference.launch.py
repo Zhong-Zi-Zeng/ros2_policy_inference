@@ -5,6 +5,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -13,6 +14,8 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument("policy_name", default_value="dummy"),
+        DeclareLaunchArgument("inference_rate_hz", default_value="30.0"),
+        DeclareLaunchArgument("action_topic", default_value="/il/grasp/action"),
         Node(
             package="ros2_policy_inference",
             executable="inference_node",
@@ -20,7 +23,11 @@ def generate_launch_description():
             output="screen",
             parameters=[
                 params_file,
-                {"policy_name": LaunchConfiguration("policy_name")},
+                {
+                    "policy_name": LaunchConfiguration("policy_name"),
+                    "inference_rate_hz": ParameterValue(LaunchConfiguration("inference_rate_hz"), value_type=float),
+                    "action_topic": ParameterValue(LaunchConfiguration("action_topic"), value_type=str),
+                },
             ],
         ),
     ])

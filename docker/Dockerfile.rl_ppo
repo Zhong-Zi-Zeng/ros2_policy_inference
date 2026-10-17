@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1
+#
+# Environment-only image for the rl_ppo policy (policies/rl_ppo/): ROS2 Jazzy + torch only. The
+# rl_games actor is rebuilt in plain torch, so neither lerobot nor rl_games is needed. Code is
+# mounted at runtime and colcon-built by entrypoint.sh, same as the other images.
+#
+#   docker compose -f docker/docker-compose.yml build policy-inference-rl-ppo   # run from repo root
+
+FROM ros:jazzy-ros-base
+SHELL ["/bin/bash", "-c"]
+
+# CPU torch is enough for this small CNN at 60 Hz. For GPU: use a CUDA index (e.g. .../whl/cu128)
+# and add the GPU reservation to this service in docker-compose.yml.
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3-pip \
+        python3-venv \
+        python3-colcon-common-extensions \
+        ros-jazzy-rmw-cyclonedds-cpp \
+        ros-jazzy-rosbag2-storage-mcap \
+    && rm -rf /var/lib/apt/lists/*
+
+# See Dockerfile for why (Fast-DDS's same-host SHM transport breaks here).
+ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+
+# See Dockerfile for why this needs a --system-site-packages venv.
+RUN python3 -m venv --system-site-packages /opt/venv
+ENV PATH="/opt/venv/bin:${PATH}"
+
+RUN pip install --no-cache-dir --index-url ${TORCH_INDEX_URL} torch \
+    && pip install --no-cache-dir numpy scipy opencv-python-headless pyyaml
+
+# See Dockerfile for why colcon itself needs to live in the venv.
+RUN pip install --no-cache-dir --force-reinstall --no-deps colcon-core
+
+WORKDIR /workspace
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["ros2", "launch", "ros2_policy_inference", "inference.launch.py", "policy_name:=rl_ppo", "inference_rate_hz:=60.0"]

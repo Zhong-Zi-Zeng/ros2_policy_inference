@@ -20,6 +20,11 @@ if [ "${1:-}" = "--liteflow" ]; then
     IMAGE_NAME="liteflow_ros2:latest"
     PACKAGE_NAME="liteflow-ros2-docker"
     SERVICE="policy-inference-liteflow"
+elif [ "${1:-}" = "--rl_ppo" ]; then
+    shift 
+    IMAGE_NAME="rl_ppo_ros2:latest"
+    PACKAGE_NAME="rl-ppo-ros2-docker"
+    SERVICE="policy-inference-rl-ppo"
 else
     IMAGE_NAME="lerobot_ros2:latest"
     PACKAGE_NAME="lerobot-ros2-docker"

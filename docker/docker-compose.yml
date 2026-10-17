@@ -61,3 +61,19 @@ services:
     command:
       ["ros2", "launch", "ros2_policy_inference", "inference.launch.py",
        "policy_name:=liteflow"]
+
+  policy-inference-rl-ppo:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.rl_ppo
+    image: rl_ppo_ros2:latest
+    network_mode: host
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - CYCLONEDDS_URI=<CycloneDDS><Domain><Discovery><MaxAutoParticipantIndex>100</MaxAutoParticipantIndex></Discovery></Domain></CycloneDDS>
+    volumes:
+      - ..:/workspace/src/ros2_policy_inference
+      - ${CHECKPOINT_DIR:-../checkpoints}:/checkpoints:ro
+    command:
+      ["ros2", "launch", "ros2_policy_inference", "inference.launch.py",
+      "policy_name:=rl_ppo", "inference_rate_hz:=60.0"]
