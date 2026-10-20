@@ -1,8 +1,8 @@
 policy_inference_node:
   ros__parameters:
     # Subscribe to these topics for the policy input
-    joint_state_topic: "/left_arm/joint_states"
-    rgb_topic: "/camera_L/color/image_raw/compressed"
+    joint_state_topic: "/sim/left_arm_joint_states"
+    rgb_topic: "/camera_L/color/image_raw"
     depth_topic: "/camera_L/depth/aligned_depth_to_color"
     ft_sensor_topic: "/left_ft/wrench_compensated"
 

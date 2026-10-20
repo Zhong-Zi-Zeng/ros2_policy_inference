@@ -87,6 +87,7 @@ class PolicyInferenceNode(Node):
             return
 
         health = self.bridge.check_health(self.cfg.topic_timeout_sec)
+        health.pop(self.cfg.ft_sensor_topic, None)
         if any(status != "ok" for status in health.values()):
             self.get_logger().warn(
                 "observation data is stale, skipping inference tick",

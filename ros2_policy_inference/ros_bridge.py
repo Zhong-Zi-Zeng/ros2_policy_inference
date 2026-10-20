@@ -52,7 +52,7 @@ class RosBridge:
         )
 
         node.create_subscription(JointState, cfg.joint_state_topic, self._on_joint, 10)
-        node.create_subscription(CompressedImage, cfg.rgb_topic, self._on_rgb, sensor_qos)
+        node.create_subscription(Image, cfg.rgb_topic, self._on_rgb, sensor_qos)
         node.create_subscription(Image, cfg.depth_topic, self._on_depth, sensor_qos)
         node.create_subscription(WrenchStamped, cfg.ft_sensor_topic, self._on_ft, 10)
 
@@ -73,7 +73,7 @@ class RosBridge:
         self._last_seen["joint"] = time.monotonic()
 
     def _on_rgb(self, msg):
-        self._rgb = {"rgb": self._compressed_msg_to_array(msg)}
+        self._rgb = {"rgb": self._image_msg_to_array(msg)}
         self._last_seen["rgb"] = time.monotonic()
 
     def _on_depth(self, msg):
@@ -135,14 +135,13 @@ class RosBridge:
         """Most recent message from every topic, merged into one dict.
         Returns None until joint + rgb + depth + ft have each
         been received at least once."""
-        if (self._joint is None or self._rgb is None or self._depth is None
-                or self._ft is None):
+        if (self._joint is None or self._rgb is None or self._depth is None):
             return None
         out = {}
         out.update(self._joint)
         out.update(self._rgb)
         out.update(self._depth)
-        out.update(self._ft)
+        out.update(self._ft or {"ft_wrench": np.zeros(6, dtype=np.float32)})
         return out
 
     def check_health(self, timeout_sec):
