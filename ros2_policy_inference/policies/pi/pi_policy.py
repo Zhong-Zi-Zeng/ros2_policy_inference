@@ -65,7 +65,7 @@ class PIPolicyModel(PolicyModel):
         self._state_keys = cfg["state_keys"]
         assert sum(_STATE_SEGMENTS[k] for k in self._state_keys) == state_dim, "state_keys don't match checkpoint"
 
-        self._policy = get_policy_class(policy_cfg.type).from_pretrained(ckpt_path, config=policy_cfg)
+        self._policy = self._load_policy(ckpt_path, policy_cfg)
         self._policy.to(self._device).eval()
         self._drop_lm_heads()
         overrides = {"device_processor": {"device": policy_cfg.device}}
@@ -122,10 +122,26 @@ class PIPolicyModel(PolicyModel):
         assert policy_cfg.output_features[ACTION].shape[0] == ACTION_DIM, "checkpoint action dim mismatch"
         return policy_cfg
 
+    def _load_policy(self, ckpt_path, policy_cfg):        
+        adapter_config_path = os.path.join(ckpt_path, "adapter_config.json")
+        if not os.path.isfile(adapter_config_path):
+            return get_policy_class(policy_cfg.type).from_pretrained(ckpt_path, config=policy_cfg)
+
+        with open(adapter_config_path) as f:
+            base_model_id = json.load(f)["base_model_name_or_path"]
+        base = get_policy_class(policy_cfg.type).from_pretrained(base_model_id, config=policy_cfg, strict=False)
+        from peft import PeftModel
+        return PeftModel.from_pretrained(base, ckpt_path)
+
+    def _unwrap_policy(self):
+        """self._policy may be a peft.PeftModel wrapping the real PI05Policy (LoRA checkpoints)."""
+        from peft import PeftModel
+        return self._policy.get_base_model() if isinstance(self._policy, PeftModel) else self._policy
+
     def _drop_lm_heads(self):
         """pi05 never computes text logits, so the 257k-vocab lm_heads (~1.5 GiB bf16) are dead
         weight on the GPU. Keep one only if it shares storage with embed_tokens (tied)."""
-        pwe = self._policy.model.paligemma_with_expert
+        pwe = self._unwrap_policy().model.paligemma_with_expert
         embed = pwe.paligemma.model.language_model.embed_tokens.weight
         freed = 0
         for owner in (pwe.paligemma, pwe.gemma_expert):
