@@ -104,9 +104,8 @@ class PolicyInferenceNode(Node):
 
         self.bridge.publish_action(action)
         self.get_logger().info(f"action: {np.array2string(action, precision=4)}")
-        self._gripper_state = (
-            1.0 if action[6] >= self.cfg.gripper_open_threshold else 0.0
-        )
+        # close ends this task; next task starts right after, so feed back "open" either way
+        self._gripper_state = 1.0
 
     def _build_obs(self, ros_data):
         return {
