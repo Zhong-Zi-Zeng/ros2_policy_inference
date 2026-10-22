@@ -1,6 +1,6 @@
 # ACT (lerobot) checkpoint + inference knobs, read by act_policy.py. Paths are inside the
 # container (checkpoints/ is mounted at /checkpoints).
-ckpt_path: "/checkpoints/checkpoint_act_375"
+ckpt_path: "/checkpoints/ACT_grasp_fan_le003_isaacsim"
 task: "pick up the fan by its handle"
 state_keys: [joint_pos, gripper_state]
 
@@ -10,14 +10,14 @@ cameras:
   observation.images.wrist:
     source: rgb
     encoding: rgb
-  observation.images.wrist_depth:
+  observation.images.depth:
     source: depth
     encoding: depth
-    info_path: "/checkpoints/checkpoint_act_375/depth_encoding.json"
+    info_path: "/checkpoints/ACT_grasp_fan_le003_isaacsim/depth_info.json"
 
 # Optional (unset = checkpoint default / auto):
 # device: "cuda"
-# n_action_steps: 10
+n_action_steps: 10
 # warmup: true
 
 # Temporal ensembling (ACT paper): run the model every tick and average overlapping chunk
