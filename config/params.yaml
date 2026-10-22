@@ -14,7 +14,7 @@ policy_inference_node:
 
     # How often the policy runs (Hz). Independent of camera/topic rates —
     # each tick uses whatever the latest message on every topic is.
-    inference_rate_hz: 30.0
+    inference_rate_hz: 60.0
 
     # How long (seconds) a subscribed topic may go without a message before
     # a warning is logged (no publisher / no data yet / went stale).

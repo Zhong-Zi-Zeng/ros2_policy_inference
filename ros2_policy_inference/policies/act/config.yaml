@@ -17,7 +17,7 @@ cameras:
 
 # Optional (unset = checkpoint default / auto):
 # device: "cuda"
-# n_action_steps: 10
+n_action_steps: 10
 # warmup: true
 
 # Temporal ensembling (ACT paper): run the model every tick and average overlapping chunk
