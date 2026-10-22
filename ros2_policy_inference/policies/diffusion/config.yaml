@@ -10,7 +10,7 @@ cameras:
   observation.images.wrist:
     source: rgb
     encoding: rgb
-  observation.images.wrist_depth:
+  observation.images.depth:
     source: depth
     encoding: depth
     info_path: "/checkpoints/checkpoint_diffusion_50/depth_encoding.json"
