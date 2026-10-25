@@ -7,7 +7,14 @@ framework) don't need to be installed unless that policy is selected.
 from .base_policy import PolicyModel
 
 
-def create_policy(name: str) -> PolicyModel:
+# policies whose constructor takes the ckpt_path parameter (overrides ckpt_path in their config.yaml)
+_CKPT_PATH_POLICIES = ("omnireset",)
+
+
+def create_policy(name: str, ckpt_path: str = "") -> PolicyModel:
+    if ckpt_path and name not in _CKPT_PATH_POLICIES:
+        raise ValueError(f"policy_name '{name}' reads ckpt_path from its config.yaml only "
+                         f"(the ckpt_path parameter works for: {', '.join(_CKPT_PATH_POLICIES)})")
     if name == "dummy":
         from .dummy_policy import DummyPolicyModel
         return DummyPolicyModel()
@@ -26,7 +33,7 @@ def create_policy(name: str) -> PolicyModel:
     if name == "diffusion":
         from .diffusion.diffusion_policy import DiffusionPolicyModel
         return DiffusionPolicyModel()
-    if name == "rl_ppo":
-        from .rl_ppo.rl_ppo_policy import RLPPOPolicyModel
-        return RLPPOPolicyModel()
-    raise ValueError(f"unknown policy_name '{name}' (options: dummy, act, pi, liteflow, groot, diffusion, rl_ppo)")
+    if name == "omnireset":
+        from .omnireset.omnireset_policy import OmniResetPolicyModel
+        return OmniResetPolicyModel(ckpt_path)
+    raise ValueError(f"unknown policy_name '{name}' (options: dummy, act, pi, liteflow, groot, diffusion, omnireset)")

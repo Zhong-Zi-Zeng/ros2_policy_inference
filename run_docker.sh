@@ -16,33 +16,41 @@
 #   ./run_docker.sh --policy-name act        # docker compose run, act policy
 #   ./run_docker.sh --policy-name liteflow   # docker compose run, liteflow policy
 #   ./run_docker.sh --policy-name liteflow bash   # interactive shell instead
-#   ./run_docker.sh --policy-name rl_ppo    # rl ppo policy
+#   ./run_docker.sh --policy-name omnireset   # omnireset, checkpoint from its config.yaml
+#   ./run_docker.sh --policy-name omnireset ckpt_path:=/checkpoints/omnireset/d15b.pth
+#       key:=value args right after the policy name are passed to the launch file
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 if [ "${1:-}" != "--policy-name" ] || [ -z "${2:-}" ]; then
-    echo "Usage: $0 --policy-name <dummy|act|pi|groot|liteflow> [command...]" >&2
+    echo "Usage: $0 --policy-name <dummy|act|pi|groot|liteflow|omnireset> [key:=value...] [command...]" >&2
     exit 1
 fi
 POLICY_NAME="$2"
 shift 2
 
+LAUNCH_ARGS=()
 if [ "$POLICY_NAME" = "liteflow" ]; then
     IMAGE_NAME="liteflow_ros2:latest"
     PACKAGE_NAME="liteflow-ros2-docker"
     SERVICE="policy-inference-liteflow"
-elif [ "$POLICY_NAME" = "rl_ppo" ]; then
-    IMAGE_NAME="rl_ppo_ros2:latest"
-    PACKAGE_NAME="rl-ppo-ros2-docker"
-    SERVICE="policy-inference-rl-ppo"
-    LAUNCH_ARGS=("inference_rate_hz:=60.0")
+elif [ "$POLICY_NAME" = "omnireset" ]; then
+    IMAGE_NAME="omnireset_ros2:latest"
+    PACKAGE_NAME="omnireset-ros2-docker"
+    SERVICE="policy-inference-omnireset"
+    LAUNCH_ARGS=("inference_rate_hz:=30.0")   # the rate OmniResetEnv trains the policy at
 else
     IMAGE_NAME="lerobot_ros2:latest"
     PACKAGE_NAME="lerobot-ros2-docker"
     SERVICE="policy-inference"
 fi
+# key:=value args go to the launch file (later ones override the defaults above)
+while [ $# -gt 0 ] && [[ "$1" == *:=* ]]; do
+    LAUNCH_ARGS+=("$1")
+    shift
+done
 PACKAGE_URL="http://miislab-gitlab.synology.me:32769/api/v4/projects/mis-miis-robotics%2Fdelta%2Fros2_policy_inference/packages/generic/$PACKAGE_NAME/1.0.0/${IMAGE_NAME%%:*}.tar.gz"
 
 # Falls back to a token saved on disk so you don't have to export it every
@@ -65,7 +73,6 @@ if ! docker image inspect "$IMAGE_NAME" &> /dev/null; then
     gunzip -c "$TMP_TAR" | docker load
 fi
 
-LAUNCH_ARGS=()
 if [ "$POLICY_NAME" = "liteflow" ] && [ ! -s "checkpoints/liteflow/step_20000_ema/config.json" ]; then
     echo "[run_docker] liteflow checkpoint not found locally, fetching..."
     ./ros2_policy_inference/policies/liteflow/fetch_weights.sh

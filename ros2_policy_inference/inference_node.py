@@ -33,6 +33,8 @@ _DEFAULT_PARAMS = dict(
     action_topic="/il/grasp/action",
     # Which policies/*.py implementation to run — see policies/__init__.py.
     policy_name="dummy",
+    # Checkpoint file for policies that accept it (see policies/__init__.py); "" = the policy's config.yaml.
+    ckpt_path="",
     inference_rate_hz=10.0,
     topic_timeout_sec=2.0,
     image_size=256,
@@ -49,6 +51,7 @@ class InferenceConfig:
     ft_sensor_topic: str
     action_topic: str
     policy_name: str
+    ckpt_path: str
     inference_rate_hz: float
     topic_timeout_sec: float
     image_size: int
@@ -63,7 +66,7 @@ class PolicyInferenceNode(Node):
         self.cfg = cfg
 
         self.bridge = RosBridge(self, cfg)
-        self.policy = policy if policy is not None else create_policy(cfg.policy_name)
+        self.policy = policy if policy is not None else create_policy(cfg.policy_name, cfg.ckpt_path)
         self.policy.reset()
 
         self._gripper_state = 1.0 if cfg.initial_gripper_open else 0.0

@@ -16,6 +16,7 @@ def generate_launch_description():
         DeclareLaunchArgument("policy_name", default_value="dummy"),
         DeclareLaunchArgument("inference_rate_hz", default_value="30.0"),
         DeclareLaunchArgument("action_topic", default_value="/il/grasp/action"),
+        DeclareLaunchArgument("ckpt_path", default_value=""),
         Node(
             package="ros2_policy_inference",
             executable="inference_node",
@@ -27,6 +28,7 @@ def generate_launch_description():
                     "policy_name": LaunchConfiguration("policy_name"),
                     "inference_rate_hz": ParameterValue(LaunchConfiguration("inference_rate_hz"), value_type=float),
                     "action_topic": ParameterValue(LaunchConfiguration("action_topic"), value_type=str),
+                    "ckpt_path": ParameterValue(LaunchConfiguration("ckpt_path"), value_type=str),
                 },
             ],
         ),
