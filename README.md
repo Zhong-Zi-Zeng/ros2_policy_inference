@@ -37,7 +37,7 @@ Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-nat
 | `act` | not implemented |
 | `pi` | π₀.₅ (pi05) LeRobot checkpoint, working |
 | `liteflow` | InternVL3-1B + FLOWER, working |
-| `omnireset` | rl-template OmniReset student / RL fine-tune (CPU), see [docs/policy_workflow.md](docs/policy_workflow.md) |
+| `omnireset` | rl-template OmniReset student / RL fine-tune (CPU), working |
 
 Checkpoints hosted on Hugging Face (e.g. `pi`'s) are downloaded with:
 ```bash
@@ -87,9 +87,6 @@ ros2 topic echo /il/grasp/action
 ## 🛠️ Development
 
 ### Add a policy
-
-Full walkthrough (new policy, image build / push, checkpoints on Hugging Face, robot run):
-[docs/policy_workflow.md](docs/policy_workflow.md).
 
 1. Subclass `PolicyModel` in `policies/your_policy.py`; see `policies/dummy_policy.py`.
 2. Define observation and action specs in `policies/base_policy.py`.
