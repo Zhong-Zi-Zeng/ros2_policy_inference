@@ -43,13 +43,6 @@ Checkpoints hosted on Hugging Face (e.g. `pi`'s) are downloaded with:
 ```bash
 hf download <hf_repo_id> --local-dir checkpoints/<name>
 ```
-then point that policy's `ckpt_path` (in its `config.yaml`) at `/checkpoints/<name>`.
-
-Only `policy_name` is set on the command line. Shared node settings (topics,
-`inference_rate_hz`, ...) live in `config/params.yaml`, and each policy's own
-settings (checkpoint, scales, ...) in `policies/<name>/config.yaml`. A policy
-trained at a fixed control rate can pin it there with `inference_rate_hz`,
-which overrides `params.yaml` (`omnireset` pins 30 Hz).
 
 ### 💻 Local
 
