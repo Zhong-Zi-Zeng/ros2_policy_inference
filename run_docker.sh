@@ -6,8 +6,8 @@
 #
 # --policy-name picks which policy to launch and, from that, which image:
 # liteflow runs in its own image (ROS2 + CUDA + InternVL3/FLOWER — see
-# Dockerfile.liteflow), everything else (act/pi/dummy) in the shared
-# lerobot one. Either way, code is mounted in and colcon-built fresh by
+# Dockerfile.liteflow), omnireset in a CPU torch one (Dockerfile.omnireset),
+# everything else (act/pi/dummy) in the shared lerobot one. Either way, code is mounted in and colcon-built fresh by
 # entrypoint.sh on every container start, so pulling an older image is
 # fine as long as its Dockerfile hasn't changed. Rebuild + push_docker.sh
 # only when it has.
@@ -16,13 +16,14 @@
 #   ./run_docker.sh --policy-name act        # docker compose run, act policy
 #   ./run_docker.sh --policy-name liteflow   # docker compose run, liteflow policy
 #   ./run_docker.sh --policy-name liteflow bash   # interactive shell instead
+#   ./run_docker.sh --policy-name omnireset  # docker compose run, omnireset policy (CPU)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 if [ "${1:-}" != "--policy-name" ] || [ -z "${2:-}" ]; then
-    echo "Usage: $0 --policy-name <dummy|act|pi|groot|liteflow> [command...]" >&2
+    echo "Usage: $0 --policy-name <dummy|act|pi|groot|liteflow|omnireset> [command...]" >&2
     exit 1
 fi
 POLICY_NAME="$2"
@@ -32,6 +33,10 @@ if [ "$POLICY_NAME" = "liteflow" ]; then
     IMAGE_NAME="liteflow_ros2:latest"
     PACKAGE_NAME="liteflow-ros2-docker"
     SERVICE="policy-inference-liteflow"
+elif [ "$POLICY_NAME" = "omnireset" ]; then
+    IMAGE_NAME="omnireset_ros2:latest"
+    PACKAGE_NAME="omnireset-ros2-docker"
+    SERVICE="policy-inference-omnireset"
 else
     IMAGE_NAME="lerobot_ros2:latest"
     PACKAGE_NAME="lerobot-ros2-docker"

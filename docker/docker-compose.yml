@@ -5,11 +5,11 @@
 # ROS_DOMAIN_ID and CHECKPOINT_DIR can be overridden via a .env file or
 # `ROS_DOMAIN_ID=1 CHECKPOINT_DIR=/data/ckpt docker compose -f docker/docker-compose.yml up`.
 #
-# Code is not baked into either image — this repo is mounted in and
+# Code is not baked into any image — this repo is mounted in and
 # entrypoint.sh colcon-builds it on every container start, so a `git pull`
 # on the host + a restart always runs whatever's currently checked out.
-# Both services build the same package; only the environment differs (see
-# Dockerfile vs Dockerfile.liteflow), so pick a service by which policy_name
+# All services build the same package; only the environment differs (see
+# Dockerfile / Dockerfile.liteflow / Dockerfile.omnireset), so pick a service by which policy_name
 # you're running, not by editing the command.
 
 name: ros2_policy_inference
@@ -61,3 +61,21 @@ services:
     command:
       ["ros2", "launch", "ros2_policy_inference", "inference.launch.py",
        "policy_name:=liteflow"]
+
+  policy-inference-omnireset:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.omnireset
+    image: omnireset_ros2:latest
+    network_mode: host
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - CYCLONEDDS_URI=<CycloneDDS><Domain><Discovery><MaxAutoParticipantIndex>100</MaxAutoParticipantIndex></Discovery></Domain></CycloneDDS>
+      # torch's default (one thread per core) stalls the 30 Hz loop (28 Hz, 160 ms gaps on the bag); 4 holds 30 Hz
+      - OMP_NUM_THREADS=4
+    volumes:
+      - ..:/workspace/src/ros2_policy_inference
+      - ${CHECKPOINT_DIR:-../checkpoints}:/checkpoints:ro
+    command:
+      ["ros2", "launch", "ros2_policy_inference", "inference.launch.py",
+       "policy_name:=omnireset"]
