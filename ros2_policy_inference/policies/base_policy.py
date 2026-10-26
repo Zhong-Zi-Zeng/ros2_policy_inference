@@ -19,6 +19,9 @@ ACTION_DIM = 7
 class PolicyModel(ABC):
     """Interface every IL/VLA policy backend must implement."""
 
+    # Overrides the inference_rate_hz param when set (policies trained at a fixed control rate).
+    inference_rate_hz = None
+
     def reset(self):
         """Called once when the node starts. Override to reset any internal
         state (e.g. an action-chunking buffer or recurrent hidden state)

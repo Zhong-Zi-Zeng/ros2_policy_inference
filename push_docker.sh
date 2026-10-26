@@ -9,6 +9,7 @@
 # Usage:
 #   ./push_docker.sh [version]             # default image, default version 1.0.0
 #   ./push_docker.sh --liteflow [version]  # liteflow image
+#   ./push_docker.sh --omnireset [version] # omnireset image
 #   (reads GITLAB_TOKEN from the env, or falls back to ~/.gitlab_token; needs 'api' scope)
 set -euo pipefail
 
@@ -20,6 +21,11 @@ if [ "${1:-}" = "--liteflow" ]; then
     IMAGE_NAME="liteflow_ros2:latest"
     PACKAGE_NAME="liteflow-ros2-docker"
     SERVICE="policy-inference-liteflow"
+elif [ "${1:-}" = "--omnireset" ]; then
+    shift
+    IMAGE_NAME="omnireset_ros2:latest"
+    PACKAGE_NAME="omnireset-ros2-docker"
+    SERVICE="policy-inference-omnireset"
 else
     IMAGE_NAME="lerobot_ros2:latest"
     PACKAGE_NAME="lerobot-ros2-docker"

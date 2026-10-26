@@ -26,4 +26,7 @@ def create_policy(name: str) -> PolicyModel:
     if name == "diffusion":
         from .diffusion.diffusion_policy import DiffusionPolicyModel
         return DiffusionPolicyModel()
-    raise ValueError(f"unknown policy_name '{name}' (options: dummy, act, pi, liteflow, groot, diffusion)")
+    if name == "omnireset":
+        from .omnireset.omnireset_policy import OmniResetPolicyModel
+        return OmniResetPolicyModel()
+    raise ValueError(f"unknown policy_name '{name}' (options: dummy, act, pi, liteflow, groot, diffusion, omnireset)")

@@ -68,7 +68,10 @@ class PolicyInferenceNode(Node):
 
         self._gripper_state = 1.0 if cfg.initial_gripper_open else 0.0
 
-        self.create_timer(1.0 / cfg.inference_rate_hz, self._on_tick)
+        # a policy trained at a fixed control rate pins it in its own config.yaml
+        rate_hz = self.policy.inference_rate_hz or cfg.inference_rate_hz
+        self.get_logger().info(f"inference rate: {rate_hz} Hz")
+        self.create_timer(1.0 / rate_hz, self._on_tick)
         self.create_timer(1.0, self._on_health_check)
 
     def _load_config(self):

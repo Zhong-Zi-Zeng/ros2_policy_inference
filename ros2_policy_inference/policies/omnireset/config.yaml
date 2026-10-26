@@ -1,0 +1,33 @@
+# rl-template OmniResetEnv student, read by omnireset_policy.py. Paths are inside the container
+# (checkpoints/ is mounted at /checkpoints).
+# - distill_student.py checkpoint (student_best.pth): stores its camera setup itself.
+# - rl_games checkpoint (RL fine-tune, nn/*.pth): copy the run's params/env.yaml next to it as <name>.env.yaml.
+# The network (conv2d / resnet, image channels) is read from the weights.
+ckpt_path: "/checkpoints/omnireset/d19b.pth"
+
+# Control rate OmniResetEnv trains at; overrides inference_rate_hz in config/params.yaml
+# (pos_scale / rot_scale / max_steps below are per 30 Hz step).
+inference_rate_hz: 30.0
+
+# OmniResetEnvCfg.ee_action_pos_scale / ee_action_rot_scale: per policy step at 30 Hz
+pos_scale: 0.005
+rot_scale: 0.010
+# multiplier on the executed motion; training randomized it per axis in [0.8, 1.2], so 0.8 is the
+# slowest setting the policy has seen
+action_scale_mult: 0.8
+
+# Orientation of the frame /il/grasp/action is expressed in, seen from the sim env frame (w, x, y, z).
+# Default = the USD robot root (RS_M90E7A init_state.rot), i.e. assumes the controller uses the robot base frame.
+out_frame_quat_wxyz: [0.61222, -0.61183, -0.3545, 0.35382]
+euler_order: "xyz"
+
+# The policy also outputs a gripper command; opening drops the fan, so it is held closed unless this is true.
+allow_gripper_open: false
+max_steps: 300                  # 10 s at 30 Hz, same as the training episode
+
+# Per-step random image shift of +-N px, as in training (aug_step_shift_px = 4). 0 = the steady real image.
+step_shift_px: 0
+
+# Optional:
+# device: "cuda"
+# warmup: true
