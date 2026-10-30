@@ -125,7 +125,9 @@ class OmniResetPolicyModel(PolicyModel):
     def __init__(self):
         with open(_CONFIG_PATH) as f:
             cfg = yaml.safe_load(f) or {}
-        self.inference_rate_hz = cfg.get("inference_rate_hz")
+        self.sync_chunk_size = cfg.get("sync_chunk_size", 1)
+        self.request_topic = cfg.get("request_topic")
+        self.chunk_topic = cfg.get("chunk_topic")
         self._log = get_logger("omnireset_policy")
         self._cfg = cfg
         self._device = torch.device(cfg.get("device") or ("cuda" if torch.cuda.is_available() else "cpu"))

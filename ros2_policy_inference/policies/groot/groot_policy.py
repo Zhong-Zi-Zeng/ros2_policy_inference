@@ -37,6 +37,8 @@ class GrootPolicyModel(PolicyModel):
         with open(_CONFIG_PATH) as f:
             cfg = yaml.safe_load(f) or {}
         self._log = get_logger("groot_policy")
+        self.request_topic = cfg.get("request_topic")
+        self.chunk_topic = cfg.get("chunk_topic")
 
         ckpt_path = cfg["ckpt_path"]
         self._task = cfg["task"]
@@ -51,6 +53,7 @@ class GrootPolicyModel(PolicyModel):
         assert policy_cfg.output_features[ACTION].shape[0] == ACTION_DIM, "checkpoint action dim mismatch"
         self._device = torch.device(policy_cfg.device)
         self._n_action_steps = policy_cfg.n_action_steps
+        self.sync_chunk_size = policy_cfg.n_action_steps
         self._chunk = deque()
 
         self._cameras = build_cameras(cfg["cameras"], policy_cfg.image_features, ckpt_path)
