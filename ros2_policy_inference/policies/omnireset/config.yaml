@@ -5,11 +5,14 @@
 # The network (conv2d / resnet, image channels) is read from the weights.
 ckpt_path: "/checkpoints/omnireset/d19b.pth"
 
-# Control rate OmniResetEnv trains at; overrides inference_rate_hz in config/params.yaml
-# (pos_scale / rot_scale / max_steps below are per 30 Hz step).
-inference_rate_hz: 30.0
+# RL insert — overrides request_topic/chunk_topic in config/params.yaml.
+request_topic: "/rl/insert/request"
+chunk_topic: "/rl/insert/action_chunk"
 
-# OmniResetEnvCfg.ee_action_pos_scale / ee_action_rot_scale: per policy step at 30 Hz
+# RL is closed-loop (re-observe every step); overrides sync_chunk_size in config/params.yaml.
+sync_chunk_size: 1
+
+# OmniResetEnvCfg.ee_action_pos_scale / ee_action_rot_scale: per policy step, trained at 30 Hz
 pos_scale: 0.005
 rot_scale: 0.010
 # multiplier on the executed motion; training randomized it per axis in [0.8, 1.2], so 0.8 is the

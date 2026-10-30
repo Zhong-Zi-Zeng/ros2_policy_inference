@@ -6,15 +6,8 @@ policy_inference_node:
     depth_topic: "/camera_L/depth/aligned_depth_to_color"
     ft_sensor_topic: "/left_ft/wrench_compensated"
 
-    # Topic to publish the predicted action to.
-    action_topic: "/il/grasp/action"
-
     # Which policies/*.py implementation to run
     policy_name: "dummy"
-
-    # How often the policy runs (Hz). Independent of camera/topic rates —
-    # each tick uses whatever the latest message on every topic is.
-    inference_rate_hz: 60.0
 
     # How long (seconds) a subscribed topic may go without a message before
     # a warning is logged (no publisher / no data yet / went stale).
@@ -27,3 +20,8 @@ policy_inference_node:
     # Gripper setting
     initial_gripper_open: true
     gripper_open_threshold: 0.5
+
+    # Fallback request/chunk topic pair, used only if the selected policy's own config.yaml
+    # doesn't set request_topic/chunk_topic (see policies/base_policy.py).
+    request_topic: "/il/grasp/request"
+    chunk_topic: "/il/grasp/action_chunk"
