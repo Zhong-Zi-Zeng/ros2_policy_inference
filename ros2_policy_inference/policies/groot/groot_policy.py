@@ -1,4 +1,5 @@
 """GR00T N1.7 policy: runs a LeRobot-trained GR00T checkpoint, configured by config.yaml."""
+import json
 import os
 import time
 from collections import deque
@@ -30,6 +31,7 @@ _CONFIG_PATH = next(
 )
 
 _STATE_SEGMENTS = {"joint_pos": 6, "gripper_state": 1, "ft_wrench": 6}
+_DEFAULT_BASE = "nvidia/GR00T-N1.7-3B"
 
 
 class GrootPolicyModel(PolicyModel):
@@ -62,7 +64,7 @@ class GrootPolicyModel(PolicyModel):
         self._state_keys = cfg["state_keys"]
         assert sum(_STATE_SEGMENTS[k] for k in self._state_keys) == state_dim, "state_keys don't match checkpoint"
 
-        self._policy = get_policy_class(policy_cfg.type).from_pretrained(ckpt_path, config=policy_cfg)
+        self._policy = self._load_policy(ckpt_path, policy_cfg, cfg.get("base_model_path", _DEFAULT_BASE))
         self._policy.to(self._device).eval()
         self._drop_lm_head()
         self._preprocessor, self._postprocessor = make_pre_post_processors(
@@ -91,11 +93,32 @@ class GrootPolicyModel(PolicyModel):
             self._chunk.extend(self._infer_chunk(frame))
         return self._chunk.popleft()
 
+    def _load_policy(self, ckpt_path, policy_cfg, base_model_path):
+        adapter_config_path = os.path.join(ckpt_path, "adapter_config.json")
+        if not os.path.isfile(adapter_config_path):
+            return get_policy_class(policy_cfg.type).from_pretrained(ckpt_path, config=policy_cfg)
+
+        # LoRA checkpoint: the adapter records the base path of the training machine, which usually
+        # doesn't exist here, so fall back to config.yaml's base_model_path (HF cache is mounted).
+        with open(adapter_config_path) as f:
+            base = json.load(f)["base_model_name_or_path"]
+        if not os.path.isdir(base):
+            base = base_model_path
+        self._log.info(f"LoRA checkpoint: loading base GR00T from {base}, adapter from {ckpt_path}")
+        policy = get_policy_class(policy_cfg.type).from_pretrained(base, config=policy_cfg)
+        from peft import PeftModel
+        return PeftModel.from_pretrained(policy, ckpt_path)
+
+    def _unwrap_policy(self):
+        """self._policy may be a peft.PeftModel wrapping the real GrootPolicy (LoRA checkpoints)."""
+        from peft import PeftModel
+        return self._policy.get_base_model() if isinstance(self._policy, PeftModel) else self._policy
+
     def _drop_lm_head(self):
         """GR00T reads the backbone's last decoder layer through a hook and never uses the VLM's
         text logits, yet Qwen3-VL still runs its 151k-vocab lm_head (plus a bf16 weight copy
         under autocast) on every call. Identity makes that a free view of the hidden states."""
-        vlm = self._policy._groot_model.backbone.model
+        vlm = self._unwrap_policy()._groot_model.backbone.model
         head = vlm.lm_head
         tied = head.weight.data_ptr() == vlm.get_input_embeddings().weight.data_ptr()
         freed = 0 if tied else head.weight.numel() * head.weight.element_size()
