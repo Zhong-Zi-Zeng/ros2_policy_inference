@@ -5,6 +5,12 @@
 # ROS_DOMAIN_ID and CHECKPOINT_DIR can be overridden via a .env file or
 # `ROS_DOMAIN_ID=1 CHECKPOINT_DIR=/data/ckpt docker compose -f docker/docker-compose.yml up`.
 #
+# CYCLONEDDS_URI defaults to plain discovery on every interface (fine for the
+# sim-only PC). On the real-robot PC, set it in docker/.env (gitignored) to
+# pin DDS to the 10G camera link with bigger socket buffers:
+#   CYCLONEDDS_URI=file:///workspace/src/ros2_policy_inference/docker/cyclonedds_10g.xml
+# That profile needs the host's net.core.rmem_max raised first (see the file).
+#
 # Code is not baked into any image — this repo is mounted in and
 # entrypoint.sh colcon-builds it on every container start, so a `git pull`
 # on the host + a restart always runs whatever's currently checked out.
@@ -23,7 +29,7 @@ services:
     network_mode: host
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}      
-      - CYCLONEDDS_URI=<CycloneDDS><Domain><Discovery><MaxAutoParticipantIndex>100</MaxAutoParticipantIndex></Discovery></Domain></CycloneDDS>
+      - CYCLONEDDS_URI=${CYCLONEDDS_URI:-<CycloneDDS><Domain><Discovery><MaxAutoParticipantIndex>100</MaxAutoParticipantIndex></Discovery></Domain></CycloneDDS>}
     volumes:
       - ..:/workspace/src/ros2_policy_inference
       - ${CHECKPOINT_DIR:-../checkpoints}:/checkpoints:ro
@@ -47,7 +53,7 @@ services:
     network_mode: host
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}      
-      - CYCLONEDDS_URI=<CycloneDDS><Domain><Discovery><MaxAutoParticipantIndex>100</MaxAutoParticipantIndex></Discovery></Domain></CycloneDDS>
+      - CYCLONEDDS_URI=${CYCLONEDDS_URI:-<CycloneDDS><Domain><Discovery><MaxAutoParticipantIndex>100</MaxAutoParticipantIndex></Discovery></Domain></CycloneDDS>}
     volumes:
       - ..:/workspace/src/ros2_policy_inference      
       - ${CHECKPOINT_DIR:-../checkpoints}:/checkpoints
@@ -70,7 +76,7 @@ services:
     network_mode: host
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
-      - CYCLONEDDS_URI=<CycloneDDS><Domain><Discovery><MaxAutoParticipantIndex>100</MaxAutoParticipantIndex></Discovery></Domain></CycloneDDS>
+      - CYCLONEDDS_URI=${CYCLONEDDS_URI:-<CycloneDDS><Domain><Discovery><MaxAutoParticipantIndex>100</MaxAutoParticipantIndex></Discovery></Domain></CycloneDDS>}
       # torch's default (one thread per core) stalls the 30 Hz loop (28 Hz, 160 ms gaps on the bag); 4 holds 30 Hz
       - OMP_NUM_THREADS=4
     volumes:

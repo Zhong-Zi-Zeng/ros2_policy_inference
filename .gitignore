@@ -3,3 +3,5 @@ __pycache__/
 *.egg-info/
 
 docs/
+# per-machine docker compose overrides (e.g. CYCLONEDDS_URI on the real-robot PC)
+docker/.env

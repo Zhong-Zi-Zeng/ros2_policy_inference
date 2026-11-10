@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Cyclone DDS profile for the real-robot PC: camera images arrive from the
+  Kinect PC over the dedicated 10G link, so pin DDS to that NIC (keeps traffic
+  off Wi-Fi / tailscale) and enlarge the socket receive buffer so multi-MB
+  image frames aren't dropped as lost IP fragments.
+
+  Selected via docker/.env:
+    CYCLONEDDS_URI=file:///workspace/src/ros2_policy_inference/docker/cyclonedds_10g.xml
+
+  Host prerequisite (min="16MB" is a hard floor - the node fails to start
+  if the kernel caps the buffer lower). /etc/sysctl.d/10-ros.conf:
+    net.core.rmem_max=2147483647
+    net.core.rmem_default=26214400
+    net.ipv4.ipfrag_high_thresh=134217728
+    net.ipv4.ipfrag_time=3
+  then `sudo sysctl -p /etc/sysctl.d/10-ros.conf`.
+-->
+<CycloneDDS>
+  <Domain>
+    <General>
+      <Interfaces>
+        <NetworkInterface address="192.168.20.2"/>
+      </Interfaces>
+    </General>
+    <Internal>
+      <SocketReceiveBufferSize min="16MB"/>
+    </Internal>
+    <Discovery>
+      <MaxAutoParticipantIndex>100</MaxAutoParticipantIndex>
+    </Discovery>
+  </Domain>
+</CycloneDDS>
