@@ -34,10 +34,17 @@ Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-nat
 | Policy | Status |
 |:--|:--|
 | `dummy` | no-op placeholder |
-| `act` | not implemented |
+| `act` | ACT LeRobot checkpoint, working |
 | `pi` | π₀.₅ (pi05) LeRobot checkpoint, working |
+| `diffusion` | Diffusion Policy LeRobot checkpoint, working |
+| `groot` | GR00T N1.7 LeRobot checkpoint, working |
 | `liteflow` | InternVL3-1B + FLOWER, working |
 | `omnireset` | rl-template OmniReset student / RL fine-tune, CPU only, own image |
+
+On the real-robot PC (not the sim-only PC), pin DDS to the 10G camera link by creating `docker/.env` (gitignored, repo root):
+```bash
+echo 'CYCLONEDDS_URI=file:///workspace/src/ros2_policy_inference/docker/cyclonedds_10g.xml' > docker/.env
+```
 
 Checkpoints hosted on Hugging Face (e.g. `pi`'s) are downloaded with:
 ```bash
