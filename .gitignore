@@ -3,3 +3,10 @@ __pycache__/
 *.egg-info/
 
 docs/
+
+# Local CodeGraph index (source configuration stays versioned)
+/.codegraph/
+codegraph*
+
+AGENTS.md
+CLAUDE.md

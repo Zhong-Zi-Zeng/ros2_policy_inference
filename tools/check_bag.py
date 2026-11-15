@@ -7,7 +7,7 @@ so nothing reaches a robot on the network even with network_mode: host.
   ./run_docker.sh --policy-name omnireset python3 /workspace/src/ros2_policy_inference/tools/check_bag.py \\
       /checkpoints/test_IL_polciy ckpt_path:=/checkpoints/omnireset/d19b.pth
 
-key:=value args go to inference.launch.py after policy_name:=omnireset inference_rate_hz:=30.0
+key:=value args go to inference.launch.py after policy_name:=omnireset inference_rate_hz:=30.0 use_sim_time:=false
 (later ones win, e.g. policy_name:=dummy).
 """
 import argparse
@@ -53,7 +53,8 @@ def main():
     from ament_index_python.packages import get_package_share_directory
     from std_msgs.msg import Float64MultiArray
 
-    launch_args = ["policy_name:=omnireset", "inference_rate_hz:=30.0", *args.launch_args]
+    # a bag has no /clock: run on wall time whatever the policy config says (use_sim_time:=true to override)
+    launch_args = ["policy_name:=omnireset", "inference_rate_hz:=30.0", "use_sim_time:=false", *args.launch_args]
     largs = dict(a.split(":=", 1) for a in launch_args)   # later ones win, as in ros2 launch
     with open(os.path.join(get_package_share_directory("ros2_policy_inference"), "config", "params.yaml")) as f:
         params = yaml.safe_load(f)["policy_inference_node"]["ros__parameters"]

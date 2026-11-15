@@ -48,6 +48,10 @@ then point that policy's `ckpt_path` (in its `config.yaml`) at `/checkpoints/<na
 ```bash
 ./run_docker.sh --policy-name omnireset ckpt_path:=/checkpoints/omnireset/d19b.pth
 ```
+A policy's `config.yaml` can also hold the node settings in a `node:` section (`action_topic`, `inference_rate_hz`,
+`use_sim_time`); `launch/inference.launch.py` reads them, a `key:=value` launch argument still wins, and anything unset
+comes from `config/params.yaml`. `omnireset`'s is set up for delta_extension's Test Place (`/rl/insert/action`,
+`use_sim_time: true`): set `use_sim_time: false` where nothing publishes `/clock`, or the node never steps.
 
 ### 💻 Local
 

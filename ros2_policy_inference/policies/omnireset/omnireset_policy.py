@@ -28,7 +28,8 @@ CLIP_OBS = 5.0                 # rl_games clip_observations
 # depth clipping / normalization of OmniResetEnvCfg (same as PickAndPlaceEnv, metres)
 DEPTH_NEAR, DEPTH_FAR = 0.02, 0.60
 DEPTH_MEAN, DEPTH_SCALE = 0.4463, 0.9062
-CAM_KEYS = ("cam_channels", "cam_compact", "real_cam_model", "obs_history")
+# rgb_depth_mask / rgb_mask_value: OmniResetEnvCfg (2026-11-09): RGB set to a fixed value where the depth has no return
+CAM_KEYS = ("cam_channels", "cam_compact", "real_cam_model", "obs_history", "rgb_depth_mask", "rgb_mask_value")
 
 
 class _ResBlock(nn.Module):
@@ -117,7 +118,7 @@ def _camera_setup(ckpt, ckpt_path):
         if meta.get("ee_target_servo"):
             raise ValueError(f"{src}: ee_target_servo=True runs use a different action meaning, not supported")
     # keys missing in older checkpoints have the OmniResetEnvCfg defaults
-    setup = {k: meta.get(k, d) for k, d in zip(CAM_KEYS, ("rgbd", False, False, 1))}
+    setup = {k: meta.get(k, d) for k, d in zip(CAM_KEYS, ("rgbd", False, False, 1, False, 0.5))}
     return setup, src
 
 
@@ -139,6 +140,7 @@ class OmniResetPolicyModel(PolicyModel):
         if setup["obs_history"] != 1:
             raise ValueError(f"{src}: obs_history={setup['obs_history']}, only single-frame students are supported")
         self._cam_channels, self._real_cam = setup["cam_channels"], bool(setup["real_cam_model"])
+        self._rgb_mask, self._rgb_mask_value = bool(setup["rgb_depth_mask"]), float(setup["rgb_mask_value"])
         # cam_compact: only the used channels (depth 1, rgb 3); otherwise RGB-D with the unused ones zeroed
         self._compact = bool(setup["cam_compact"]) and self._cam_channels != "rgbd"
         keep = ("a2c_network.actor_cnn.", "a2c_network.actor_mlp.", "a2c_network.mu.")
@@ -224,7 +226,10 @@ class OmniResetPolicyModel(PolicyModel):
             ys = np.clip(np.arange(IMG_SIZE) + dy, 0, IMG_SIZE - 1)
             xs = np.clip(np.arange(IMG_SIZE) + dx, 0, IMG_SIZE - 1)
             rgb, d = rgb[ys][:, xs], d[ys][:, xs]
-        d = (np.clip(d, DEPTH_NEAR, DEPTH_FAR) - DEPTH_MEAN) / DEPTH_SCALE
+        d = np.clip(d, DEPTH_NEAR, DEPTH_FAR)
+        if self._rgb_mask:   # OmniResetEnvCfg.rgb_depth_mask: no depth return (depth_near after the clamp) -> fixed RGB
+            rgb = np.where((d <= DEPTH_NEAR)[..., None], np.float32(self._rgb_mask_value), rgb)
+        d = (d - DEPTH_MEAN) / DEPTH_SCALE
         rgb -= rgb.mean(axis=(0, 1), keepdims=True)
         if self._compact:
             img = d[..., None] if self._cam_channels == "depth" else rgb

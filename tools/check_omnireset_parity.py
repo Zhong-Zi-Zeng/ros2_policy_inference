@@ -10,7 +10,7 @@ omnireset_env_cfg.py, not from the wrapper, so a change on either side shows up 
 
 Runs on the training PC in the rl-template Python env (torch + rl_games), no ROS needed:
   conda activate mis_isaaclab
-  python tools/check_omnireset_parity.py --rl-template ~/Desktop/rl-template checkpoints/omnireset/*.pth
+  python tools/check_omnireset_parity.py --rl-template ~/Desktop/delta_robotic/rl-template checkpoints/omnireset/*.pth
 """
 import argparse
 import ast
@@ -125,7 +125,9 @@ def main():
 
             # sim side: the real camera model gives metres with 0 = no return, the old camera inf for no hit
             fake = types.SimpleNamespace(
-                cfg=types.SimpleNamespace(use_camera=True, real_cam_model=real, aug_enable=False, depth_stale_prob=0.0,
+                cfg=types.SimpleNamespace(use_camera=True, real_cam_model=real, aug_enable=False, depth_stale_prob=0.0, cam_h=False,
+                                          rgb_depth_mask=bool(meta.get("rgb_depth_mask", False)),
+                                          rgb_mask_value=float(meta.get("rgb_mask_value", 0.5)),
                                           cam_channels=ch, cam_compact=compact, obs_history=1, **consts),
                 num_envs=1, _task_errors=lambda: None, _maybe_save_images=lambda *a: None,
                 _critic_state=lambda: None, _log_outcomes=lambda: None,

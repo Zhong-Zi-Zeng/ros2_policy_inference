@@ -40,7 +40,7 @@ elif [ "$POLICY_NAME" = "omnireset" ]; then
     IMAGE_NAME="omnireset_ros2:latest"
     PACKAGE_NAME="omnireset-ros2-docker"
     SERVICE="policy-inference-omnireset"
-    LAUNCH_ARGS=("inference_rate_hz:=30.0")   # the rate OmniResetEnv trains the policy at
+    # node settings (action topic, rate, use_sim_time) and the checkpoint: policies/omnireset/config.yaml
 else
     IMAGE_NAME="lerobot_ros2:latest"
     PACKAGE_NAME="lerobot-ros2-docker"
