@@ -6,8 +6,8 @@
 #
 # --policy-name picks which policy to launch and, from that, which image:
 # liteflow runs in its own image (ROS2 + CUDA + InternVL3/FLOWER — see
-# Dockerfile.liteflow), everything else (act/pi/dummy) in the shared
-# lerobot one. Either way, code is mounted in and colcon-built fresh by
+# Dockerfile.liteflow), omnireset in a CPU torch one (Dockerfile.omnireset),
+# everything else (act/pi/dummy) in the shared lerobot one. Either way, code is mounted in and colcon-built fresh by
 # entrypoint.sh on every container start, so pulling an older image is
 # fine as long as its Dockerfile hasn't changed. Rebuild + push_docker.sh
 # only when it has.
@@ -16,22 +16,19 @@
 #   ./run_docker.sh --policy-name act        # docker compose run, act policy
 #   ./run_docker.sh --policy-name liteflow   # docker compose run, liteflow policy
 #   ./run_docker.sh --policy-name liteflow bash   # interactive shell instead
-#   ./run_docker.sh --policy-name omnireset   # omnireset, checkpoint from its config.yaml
-#   ./run_docker.sh --policy-name omnireset ckpt_path:=/checkpoints/omnireset/d15b.pth
-#       key:=value args right after the policy name are passed to the launch file
+#   ./run_docker.sh --policy-name omnireset  # docker compose run, omnireset policy (CPU)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 if [ "${1:-}" != "--policy-name" ] || [ -z "${2:-}" ]; then
-    echo "Usage: $0 --policy-name <dummy|act|pi|groot|liteflow|omnireset> [key:=value...] [command...]" >&2
+    echo "Usage: $0 --policy-name <dummy|act|pi|groot|liteflow|omnireset> [command...]" >&2
     exit 1
 fi
 POLICY_NAME="$2"
 shift 2
 
-LAUNCH_ARGS=()
 if [ "$POLICY_NAME" = "liteflow" ]; then
     IMAGE_NAME="liteflow_ros2:latest"
     PACKAGE_NAME="liteflow-ros2-docker"
@@ -40,17 +37,11 @@ elif [ "$POLICY_NAME" = "omnireset" ]; then
     IMAGE_NAME="omnireset_ros2:latest"
     PACKAGE_NAME="omnireset-ros2-docker"
     SERVICE="policy-inference-omnireset"
-    # node settings (action topic, rate, use_sim_time) and the checkpoint: policies/omnireset/config.yaml
 else
     IMAGE_NAME="lerobot_ros2:latest"
     PACKAGE_NAME="lerobot-ros2-docker"
     SERVICE="policy-inference"
 fi
-# key:=value args go to the launch file (later ones override the defaults above)
-while [ $# -gt 0 ] && [[ "$1" == *:=* ]]; do
-    LAUNCH_ARGS+=("$1")
-    shift
-done
 PACKAGE_URL="http://miislab-gitlab.synology.me:32769/api/v4/projects/mis-miis-robotics%2Fdelta%2Fros2_policy_inference/packages/generic/$PACKAGE_NAME/1.0.0/${IMAGE_NAME%%:*}.tar.gz"
 
 # Falls back to a token saved on disk so you don't have to export it every
@@ -80,8 +71,7 @@ fi
 
 if [ $# -eq 0 ]; then
     docker compose -f docker/docker-compose.yml run --rm "$SERVICE" \
-        ros2 launch ros2_policy_inference inference.launch.py "policy_name:=$POLICY_NAME" "${LAUNCH_ARGS[@]}"
-        # ros2 launch ros2_policy_inference inference.launch.py "policy_name:=$POLICY_NAME" 
+        ros2 launch ros2_policy_inference inference.launch.py "policy_name:=$POLICY_NAME"
 else
     docker compose -f docker/docker-compose.yml run --rm "$SERVICE" "$@"
 fi

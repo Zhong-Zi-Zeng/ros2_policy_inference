@@ -5,17 +5,17 @@
 # The network (conv2d / resnet, image channels) is read from the weights.
 ckpt_path: "/checkpoints/omnireset/d24b.pth"
 
-# Node settings for `./run_docker.sh --policy-name omnireset` (read by launch/inference.launch.py; a key:=value
-# launch argument on the command line still wins). Anything not set here comes from config/params.yaml.
-node:
-  action_topic: "/rl/insert/action"   # delta_extension: what its RL insert policy (Fan Insert Mode RL) subscribes to
-  inference_rate_hz: 30.0             # the rate OmniResetEnv trains the policy at
-  # true: step on /clock, which delta_extension's Test Place publishes (Isaac Sim time) only while inserting, so the
-  # policy runs at 30 Hz of sim time and stops with the insertion. Set false where nothing publishes /clock: the node
-  # would wait forever.
-  use_sim_time: true
+# RL insert — overrides request_topic/chunk_topic in config/params.yaml.
+request_topic: "/rl/insert/request"
+chunk_topic: "/rl/insert/action_chunk"
 
-# OmniResetEnvCfg.ee_action_pos_scale / ee_action_rot_scale: per policy step at 30 Hz
+# RL is closed-loop (re-observe every step); overrides sync_chunk_size in config/params.yaml.
+sync_chunk_size: 1
+# reset() is called before every chunk; the action history is only cleared after this long without a prediction
+# (= a new episode / task). Keep it above delta_extension's request resend (2 s). See OmniResetPolicyModel.reset.
+episode_gap_sec: 3.0
+
+# OmniResetEnvCfg.ee_action_pos_scale / ee_action_rot_scale: per policy step, trained at 30 Hz
 pos_scale: 0.005
 rot_scale: 0.010
 # multiplier on the executed motion; training randomized it per axis in [0.8, 1.2], so 0.8 is the
@@ -25,7 +25,7 @@ action_scale_mult: 0.8
 # Orientation of the frame the action is expressed in, seen from the sim env frame (w, x, y, z).
 # [1, 0, 0, 0] = world (= sim env) frame, which delta_extension's DeltaActionPolicy expects. The robot base frame would be
 # the USD robot root (RS_M90E7A init_state.rot) [0.61222, -0.61183, -0.3545, 0.35382].
-out_frame_quat_wxyz: [1, 0,0,0]
+out_frame_quat_wxyz: [1, 0, 0, 0]
 euler_order: "xyz"
 
 # The policy also outputs a gripper command; opening drops the fan, so it is held closed unless this is true.

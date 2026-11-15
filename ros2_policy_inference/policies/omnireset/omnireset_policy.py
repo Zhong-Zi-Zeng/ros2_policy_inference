@@ -2,6 +2,7 @@
 OmniResetEnv, either DAgger-distilled (distill_student.py) or RL fine-tuned (rl_games), configured by config.yaml."""
 import os
 import re
+import time
 from collections import OrderedDict
 
 import numpy as np
@@ -126,8 +127,11 @@ class OmniResetPolicyModel(PolicyModel):
     def __init__(self, ckpt_path=None):
         with open(_CONFIG_PATH) as f:
             cfg = yaml.safe_load(f) or {}
-        if ckpt_path:   # ckpt_path launch argument, overrides config.yaml
+        if ckpt_path:   # tools (check_omnireset_parity.py, check_omnireset_ckpts.py) pass a checkpoint; the node uses config.yaml
             cfg["ckpt_path"] = ckpt_path
+        self.sync_chunk_size = cfg.get("sync_chunk_size", 1)
+        self.request_topic = cfg.get("request_topic")
+        self.chunk_topic = cfg.get("chunk_topic")
         self._log = get_logger("omnireset_policy")
         self._cfg = cfg
         self._device = torch.device(cfg.get("device") or ("cuda" if torch.cuda.is_available() else "cpu"))
@@ -158,7 +162,8 @@ class OmniResetPolicyModel(PolicyModel):
         w, x, y, z = cfg["out_frame_quat_wxyz"]
         self._R = Rotation.from_quat([x, y, z, w]).inv().as_matrix()
 
-        self.reset()
+        self._last_predict = None
+        self._reset_episode()
         self._log.info(
             f"omnireset actor loaded from {cfg['ckpt_path']} on {self._device}: cnn={self._net.cnn_type}, "
             f"cam_channels={self._cam_channels}, cam_compact={self._compact}, real_cam_model={self._real_cam}, "
@@ -173,6 +178,22 @@ class OmniResetPolicyModel(PolicyModel):
                           torch.zeros(1, VEC_DIM, device=self._device))
 
     def reset(self):
+        # inference_node calls reset() before every chunk, i.e. every step here (sync_chunk_size 1). The previous action
+        # and gripper state are part of the observation (OmniResetEnv._proprio), so they are only cleared when a new
+        # episode starts: no prediction for episode_gap_sec (delta_extension makes a new DeltaActionPolicy per task).
+        # The gap is longer than delta_extension's request resend (_REQUEST_RESEND_SEC 2 s), so a resent request does not
+        # clear the history mid-episode. Every clear is logged, so a wrong one shows up in the node log.
+        gap = float(self._cfg.get("episode_gap_sec", 3.0))
+        if self._last_predict is None:
+            self._reset_episode()
+            return
+        idle = time.monotonic() - self._last_predict
+        if idle > gap:
+            self._log.info(f"new episode: {idle:.1f} s without a prediction (> episode_gap_sec {gap:g}), "
+                           f"clearing the action history after {self._step} steps")
+            self._reset_episode()
+
+    def _reset_episode(self):
         self._step = 0
         # OmniResetEnv._reset_idx: every episode starts holding the fan, "gripper closed" (-1) in the action history
         self._prev_action = np.zeros(ACTION_DIM, dtype=np.float32)
@@ -180,6 +201,7 @@ class OmniResetPolicyModel(PolicyModel):
         self._gripper_state = 0.0
 
     def predict(self, obs: dict) -> np.ndarray:
+        self._last_predict = time.monotonic()
         self._step += 1
         if self._step > self._cfg["max_steps"]:
             if self._step == self._cfg["max_steps"] + 1:

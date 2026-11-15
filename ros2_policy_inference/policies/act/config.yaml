@@ -4,20 +4,24 @@ ckpt_path: "/checkpoints/checkpoint_act_375"
 task: "pick up the fan by its handle"
 state_keys: [joint_pos, gripper_state]
 
+# IL grasp — overrides request_topic/chunk_topic in config/params.yaml.
+request_topic: "/il/grasp/request"
+chunk_topic: "/il/grasp/action_chunk"
+
 # Which obs each of the checkpoint's image features comes from, and how to encode it.
 # Must cover every image feature the checkpoint declares. encoding: rgb | depth (depth needs info_path).
 cameras:
   observation.images.wrist:
     source: rgb
     encoding: rgb
-  observation.images.wrist_depth:
+  observation.images.depth:
     source: depth
     encoding: depth
     info_path: "/checkpoints/checkpoint_act_375/depth_encoding.json"
 
 # Optional (unset = checkpoint default / auto):
 # device: "cuda"
-# n_action_steps: 10
+n_action_steps: 10
 # warmup: true
 
 # Temporal ensembling (ACT paper): run the model every tick and average overlapping chunk

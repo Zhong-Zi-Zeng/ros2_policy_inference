@@ -6,6 +6,10 @@
 # downloads a version from the GitLab Package Registry into this path.
 checkpoint_dir: /checkpoints/liteflow/step_20000_ema
 
+# IL grasp — overrides request_topic/chunk_topic in config/params.yaml.
+request_topic: "/il/grasp/request"
+chunk_topic: "/il/grasp/action_chunk"
+
 # Offline InternVL3-1B snapshot. trust_remote_code's AutoModel.from_pretrained needs this
 # present to build the module tree even though none of its weights survive the checkpoint load
 # (see liteflow_delta_deploy/README_FIRST.md). Also fetched by fetch_weights.sh.

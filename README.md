@@ -34,24 +34,22 @@ Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-nat
 | Policy | Status |
 |:--|:--|
 | `dummy` | no-op placeholder |
-| `act` | not implemented |
+| `act` | ACT LeRobot checkpoint, working |
 | `pi` | π₀.₅ (pi05) LeRobot checkpoint, working |
+| `diffusion` | Diffusion Policy LeRobot checkpoint, working |
+| `groot` | GR00T N1.7 LeRobot checkpoint, working |
 | `liteflow` | InternVL3-1B + FLOWER, working |
-| `omnireset` | rl-template OmniReset student / RL fine-tune (CPU), working |
+| `omnireset` | rl-template OmniReset student / RL fine-tune, CPU only, own image |
+
+On the real-robot PC (not the sim-only PC), pin DDS to the 10G camera link by creating `docker/.env` (gitignored, repo root):
+```bash
+echo 'CYCLONEDDS_URI=file:///workspace/src/ros2_policy_inference/docker/cyclonedds_10g.xml' > docker/.env
+```
 
 Checkpoints hosted on Hugging Face (e.g. `pi`'s) are downloaded with:
 ```bash
 hf download <hf_repo_id> --local-dir checkpoints/<name>
 ```
-then point that policy's `ckpt_path` (in its `config.yaml`) at `/checkpoints/<name>`.
-`omnireset` also takes it as a launch argument:
-```bash
-./run_docker.sh --policy-name omnireset ckpt_path:=/checkpoints/omnireset/d19b.pth
-```
-A policy's `config.yaml` can also hold the node settings in a `node:` section (`action_topic`, `inference_rate_hz`,
-`use_sim_time`); `launch/inference.launch.py` reads them, a `key:=value` launch argument still wins, and anything unset
-comes from `config/params.yaml`. `omnireset`'s is set up for delta_extension's Test Place (`/rl/insert/action`,
-`use_sim_time: true`): set `use_sim_time: false` where nothing publishes `/clock`, or the node never steps.
 
 ### 💻 Local
 

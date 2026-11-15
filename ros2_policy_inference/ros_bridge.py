@@ -22,7 +22,6 @@ import numpy as np
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CompressedImage, Image, JointState
 from geometry_msgs.msg import WrenchStamped
-from std_msgs.msg import Float64MultiArray
 
 
 class RosBridge:
@@ -56,15 +55,12 @@ class RosBridge:
         node.create_subscription(Image, cfg.depth_topic, self._on_depth, sensor_qos)
         node.create_subscription(WrenchStamped, cfg.ft_sensor_topic, self._on_ft, 10)
 
-        self._action_pub = node.create_publisher(Float64MultiArray, cfg.action_topic, 10)
-
         log = node.get_logger()
         log.info("RosBridge topics:")
         log.info(f"  joint    = {cfg.joint_state_topic}")
         log.info(f"  rgb      = {cfg.rgb_topic}  (CompressedImage, BEST_EFFORT)")
         log.info(f"  depth    = {cfg.depth_topic}  (BEST_EFFORT)")
         log.info(f"  ft       = {cfg.ft_sensor_topic}")
-        log.info(f"  action   = {cfg.action_topic}  (Float64MultiArray, published)")
 
     # ---------- per-topic callbacks ----------
 
@@ -87,11 +83,6 @@ class RosBridge:
             "ft_wrench": np.array([f.x, f.y, f.z, t.x, t.y, t.z], dtype=np.float32),
         }
         self._last_seen["ft"] = time.monotonic()
-
-    def publish_action(self, action: np.ndarray):
-        msg = Float64MultiArray()
-        msg.data = [float(v) for v in action]
-        self._action_pub.publish(msg)
 
     @staticmethod
     def _image_msg_to_array(msg):
@@ -144,6 +135,10 @@ class RosBridge:
         out.update(self._depth)
         out.update(self._ft)
         return out
+
+    def received_since(self, t, keys=("joint", "rgb", "depth")):
+        """True once every topic in keys has delivered a message after monotonic time t."""
+        return all(self._last_seen.get(k, -1.0) > t for k in keys)
 
     def check_health(self, timeout_sec):
         """{topic_name: status} for every subscribed topic, status one of:

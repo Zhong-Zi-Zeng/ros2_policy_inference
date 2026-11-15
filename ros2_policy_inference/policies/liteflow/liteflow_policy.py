@@ -52,6 +52,8 @@ from ..base_policy import PolicyModel
 class LiteFlowPolicyModel(PolicyModel):
     def __init__(self):
         cfg = _CFG
+        self.request_topic = cfg.get("request_topic")
+        self.chunk_topic = cfg.get("chunk_topic")
         self._prompt = cfg["prompt"]
         self._arm_key = cfg["arm_key"]
         self._dataset_key = cfg["dataset_key"]

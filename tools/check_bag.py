@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Run the inference node on a ros2 bag inside the container and check what it publishes.
 
+NOT UPDATED for the request/chunk protocol (origin/main c64b908): it expects the old timer node that publishes on
+action_topic at inference_rate_hz, so it fails on this branch until it sends requests and reads chunk_topic.
+
 Only the node's four input topics (config/params.yaml) are played, on ROS_DOMAIN_ID 42 by default,
 so nothing reaches a robot on the network even with network_mode: host.
 

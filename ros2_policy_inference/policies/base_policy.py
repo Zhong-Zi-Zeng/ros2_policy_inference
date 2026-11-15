@@ -19,6 +19,12 @@ ACTION_DIM = 7
 class PolicyModel(ABC):
     """Interface every IL/VLA policy backend must implement."""
 
+    # Override the sync_chunk_size/request_topic/chunk_topic params when set
+    # (see inference_node.py); each policy sets these from its own config.yaml.
+    sync_chunk_size = None
+    request_topic = None
+    chunk_topic = None
+
     def reset(self):
         """Called once when the node starts. Override to reset any internal
         state (e.g. an action-chunking buffer or recurrent hidden state)
