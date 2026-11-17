@@ -13,3 +13,7 @@ CLAUDE.md
 
 # per-machine docker compose overrides (e.g. CYCLONEDDS_URI on the real-robot PC)
 docker/.env
+
+CLAUDE* 
+AGENTS*
+codegraph*
