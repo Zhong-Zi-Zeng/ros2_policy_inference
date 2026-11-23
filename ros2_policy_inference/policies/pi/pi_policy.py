@@ -12,7 +12,7 @@ import yaml
 from rclpy.logging import get_logger
 
 from ..base_policy import ACTION_DIM, PolicyModel
-from ..cameras import build_cameras
+from ..cameras import build_cameras, camera_sources
 
 try:
     import transformers  # noqa: F401  needed by lerobot's pi05, only installed with lerobot[pi]
@@ -63,6 +63,7 @@ class PIPolicyModel(PolicyModel):
         # empty_camera_* are placeholders pi05 fills with blank frames itself, so they are not mapped
         declared = [k for k in policy_cfg.image_features if "empty_camera" not in k]
         self._cameras = build_cameras(cfg["cameras"], declared, ckpt_path)
+        self.image_sources = camera_sources(self._cameras)
 
         state_dim = policy_cfg.input_features[OBS_STATE].shape[0]
         self._state_keys = cfg["state_keys"]

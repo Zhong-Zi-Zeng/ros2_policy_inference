@@ -1,6 +1,6 @@
 # π₀.₅ checkpoint + inference knobs, read by pi_policy.py. Paths are inside the container
 # (checkpoints/ is mounted at /checkpoints).
-ckpt_path: "/checkpoints/pi05_grasp_fan_depth_97"
+ckpt_path: "/checkpoints/pi05_grasp-fan_Le-008_head_15k_v1_Lora"
 task: "pick up the fan by its handle"
 state_keys: [joint_pos, gripper_state]
 
@@ -10,7 +10,8 @@ chunk_topic: "/il/grasp/action_chunk"
 
 # Which obs each of the checkpoint's image features comes from, and how to encode it.
 # Must cover every image feature the checkpoint declares except its empty_camera_*
-# placeholders, which pi05 fills itself. encoding: rgb | depth (depth needs info_path).
+# placeholders, which pi05 fills itself; unused entries are ignored.
+# source: rgb | depth | head_rgb | head_depth. encoding: rgb | depth (info_path relative to ckpt_path).
 cameras:
   observation.images.wrist:
     source: rgb
@@ -18,7 +19,14 @@ cameras:
   observation.images.depth:
     source: depth
     encoding: depth
-    info_path: "/checkpoints/pi05_grasp_fan_depth_97/depth_info.json"
+    info_path: "depth_info.json"
+  observation.images.head:
+    source: head_rgb
+    encoding: rgb
+  observation.images.head_depth:
+    source: head_depth
+    encoding: depth
+    info_path: "head_depth_info.json"
 
 # Optional (unset = checkpoint default / auto):
 # device: "cuda"

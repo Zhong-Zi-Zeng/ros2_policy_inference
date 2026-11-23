@@ -1,6 +1,6 @@
 """
 Subscribes to the real robot's camera + proprioception topics used as
-policy observations, and publishes the policy's predicted EE-offset action.
+policy observations.
 
 Each topic is subscribed independently; there is NO time alignment.
 get_latest() simply returns the most recent message seen on every topic —
@@ -9,7 +9,7 @@ reason: robust to topics running at different rates or with
 un-synchronised header.stamps.
 
 QoS — camera topics are typically published BEST_EFFORT (sensor-data QoS);
-a RELIABLE subscriber silently receives nothing from them, so RGB/depth use
+a RELIABLE subscriber silently receives nothing from them, so cameras use
 a BEST_EFFORT profile while joint_state/F-T stay RELIABLE.
 
 Gripper state is intentionally NOT subscribed here — see
@@ -23,25 +23,28 @@ from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CompressedImage, Image, JointState
 from geometry_msgs.msg import WrenchStamped
 
+# image source -> (config topic attribute, message type)
+_IMAGE_STREAMS = {
+    "rgb": ("rgb_topic", CompressedImage),
+    "depth": ("depth_topic", Image),
+    "head_rgb": ("head_rgb_topic", CompressedImage),
+    "head_depth": ("head_depth_topic", Image),
+}
+
 
 class RosBridge:
-    def __init__(self, node, cfg):
+    def __init__(self, node, cfg, image_sources=("rgb", "depth")):
         self._node = node
+        self._image_sources = tuple(image_sources)
 
         self._joint = None
-        self._rgb = None
-        self._depth = None
         self._ft = None
+        self._images = {}
 
         # topic key -> topic name, for check_health(); last_seen tracked
         # separately (monotonic seconds) so health checks don't depend on
         # any particular clock source.
-        self._topics = {
-            "joint": cfg.joint_state_topic,
-            "rgb": cfg.rgb_topic,
-            "depth": cfg.depth_topic,
-            "ft": cfg.ft_sensor_topic,
-        }
+        self._topics = {"joint": cfg.joint_state_topic}
         self._last_seen = {}
 
         sensor_qos = QoSProfile(
@@ -50,17 +53,19 @@ class RosBridge:
             history=HistoryPolicy.KEEP_LAST,
         )
 
-        node.create_subscription(JointState, cfg.joint_state_topic, self._on_joint, 10)
-        node.create_subscription(CompressedImage, cfg.rgb_topic, self._on_rgb, sensor_qos)
-        node.create_subscription(Image, cfg.depth_topic, self._on_depth, sensor_qos)
-        node.create_subscription(WrenchStamped, cfg.ft_sensor_topic, self._on_ft, 10)
-
         log = node.get_logger()
         log.info("RosBridge topics:")
-        log.info(f"  joint    = {cfg.joint_state_topic}")
-        log.info(f"  rgb      = {cfg.rgb_topic}  (CompressedImage, BEST_EFFORT)")
-        log.info(f"  depth    = {cfg.depth_topic}  (BEST_EFFORT)")
-        log.info(f"  ft       = {cfg.ft_sensor_topic}")
+        node.create_subscription(JointState, cfg.joint_state_topic, self._on_joint, 10)
+        log.info(f"  joint       = {cfg.joint_state_topic}")
+        for source in self._image_sources:
+            attr, msg_type = _IMAGE_STREAMS[source]
+            topic = getattr(cfg, attr)
+            self._topics[source] = topic
+            node.create_subscription(msg_type, topic, self._image_callback(source, msg_type), sensor_qos)
+            log.info(f"  {source:<11} = {topic}  ({msg_type.__name__}, BEST_EFFORT)")
+        node.create_subscription(WrenchStamped, cfg.ft_sensor_topic, self._on_ft, 10)
+        self._topics["ft"] = cfg.ft_sensor_topic
+        log.info(f"  ft          = {cfg.ft_sensor_topic}")
 
     # ---------- per-topic callbacks ----------
 
@@ -68,13 +73,13 @@ class RosBridge:
         self._joint = {"joint_pos": np.asarray(msg.position, dtype=np.float32)}
         self._last_seen["joint"] = time.monotonic()
 
-    def _on_rgb(self, msg):
-        self._rgb = {"rgb": self._compressed_msg_to_array(msg)}
-        self._last_seen["rgb"] = time.monotonic()
+    def _image_callback(self, source, msg_type):
+        decode = self._compressed_msg_to_array if msg_type is CompressedImage else self._image_msg_to_array
 
-    def _on_depth(self, msg):
-        self._depth = {"depth": self._image_msg_to_array(msg)}
-        self._last_seen["depth"] = time.monotonic()
+        def on_image(msg):
+            self._images[source] = decode(msg)
+            self._last_seen[source] = time.monotonic()
+        return on_image
 
     def _on_ft(self, msg):
         f = msg.wrench.force
@@ -124,21 +129,19 @@ class RosBridge:
 
     def get_latest(self):
         """Most recent message from every topic, merged into one dict.
-        Returns None until joint + rgb + depth + ft have each
-        been received at least once."""
-        if (self._joint is None or self._rgb is None or self._depth is None
-                or self._ft is None):
+        Returns None until every topic has been received at least once."""
+        if (self._joint is None or self._ft is None
+                or any(s not in self._images for s in self._image_sources)):
             return None
         out = {}
         out.update(self._joint)
-        out.update(self._rgb)
-        out.update(self._depth)
         out.update(self._ft)
+        out.update({s: self._images[s] for s in self._image_sources})
         return out
 
-    def received_since(self, t, keys=("joint", "rgb", "depth")):
-        """True once every topic in keys has delivered a message after monotonic time t."""
-        return all(self._last_seen.get(k, -1.0) > t for k in keys)
+    def received_since(self, t):
+        """True once joint + every camera topic has delivered a message after monotonic time t."""
+        return all(self._last_seen.get(k, -1.0) > t for k in ("joint", *self._image_sources))
 
     def check_health(self, timeout_sec):
         """{topic_name: status} for every subscribed topic, status one of:

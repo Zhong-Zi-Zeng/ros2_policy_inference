@@ -1,7 +1,7 @@
 # GR00T N1.7 checkpoint + inference knobs, read by groot_policy.py. Paths are inside the container
 # (checkpoints/ is mounted at /checkpoints). Expects a LeRobot-trained GR00T checkpoint
 # (config.json + model weights + policy_preprocessor.json / policy_postprocessor.json).
-ckpt_path: "/checkpoints/gr00t_grasp-fan_Le-002_20k_v1"
+ckpt_path: "/checkpoints/gr00t_grasp-fan_Le-008_10k"
 task: "pick up the fan by its handle"
 state_keys: [joint_pos, gripper_state]
 
@@ -10,8 +10,8 @@ request_topic: "/il/grasp/request"
 chunk_topic: "/il/grasp/action_chunk"
 
 # Which obs each of the checkpoint's image features comes from, and how to encode it.
-# Must cover every image feature the checkpoint declares. encoding: rgb | depth
-# (depth needs info_path, and must match the dataset conversion).
+# Must cover every image feature the checkpoint declares; unused entries are ignored.
+# source: rgb | depth | head_rgb | head_depth. encoding: rgb | depth (info_path relative to ckpt_path).
 cameras:
   observation.images.wrist:
     source: rgb
@@ -19,7 +19,14 @@ cameras:
   observation.images.depth:
     source: depth
     encoding: depth
-    info_path: "/checkpoints/gr00t_grasp-fan_Le-002_20k_v1/depth_info.json"
+    info_path: "depth_info.json"
+  observation.images.head:
+    source: head_rgb
+    encoding: rgb
+  observation.images.head_depth:
+    source: head_depth
+    encoding: depth
+    info_path: "head_depth_info.json"
 
 # Optional (unset = checkpoint default / auto):
 # device: "cuda"

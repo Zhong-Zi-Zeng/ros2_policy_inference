@@ -15,6 +15,8 @@ import numpy as np
 # rotation delta as XYZ-Euler radians, gripper in [0, 1]).
 ACTION_DIM = 7
 
+IMAGE_SOURCES = ("rgb", "depth", "head_rgb", "head_depth")
+
 
 class PolicyModel(ABC):
     """Interface every IL/VLA policy backend must implement."""
@@ -24,6 +26,9 @@ class PolicyModel(ABC):
     sync_chunk_size = None
     request_topic = None
     chunk_topic = None
+
+    # Camera topics the node subscribes to (subset of IMAGE_SOURCES)
+    image_sources = ("rgb", "depth")
 
     def reset(self):
         """Called once when the node starts. Override to reset any internal
@@ -37,6 +42,8 @@ class PolicyModel(ABC):
         obs keys:
           rgb          (image_size, image_size, 3) uint8
           depth        (image_size, image_size) uint16/float32
+          head_rgb     (image_size, image_size, 3) uint8
+          head_depth   (image_size, image_size) uint16/float32
           joint_pos    (6,) float32
           gripper_state  scalar float32, 1.0=open / 0.0=closed — the
                          policy's own previous gripper output (or the

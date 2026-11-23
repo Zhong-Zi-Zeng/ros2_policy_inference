@@ -21,8 +21,9 @@ _DEFAULT_PARAMS = dict(
     joint_state_topic="/left_arm/joint_states",
     rgb_topic="/camera_L/color/image_raw/compressed",
     depth_topic="/camera_L/depth/aligned_depth_to_color",
+    head_rgb_topic="/camera_H/color/image_raw/compressed",
+    head_depth_topic="/camera_H/depth/aligned_depth_to_color",
     ft_sensor_topic="/left_ft/wrench_compensated",
-    # Which policies/*.py implementation to run — see policies/__init__.py.
     policy_name="dummy",
     topic_timeout_sec=2.0,
     image_size=256,
@@ -39,6 +40,8 @@ class InferenceConfig:
     joint_state_topic: str
     rgb_topic: str
     depth_topic: str
+    head_rgb_topic: str
+    head_depth_topic: str
     ft_sensor_topic: str
     policy_name: str
     topic_timeout_sec: float
@@ -56,9 +59,9 @@ class PolicyInferenceNode(Node):
         cfg = self._load_config()
         self.cfg = cfg
 
-        self.bridge = RosBridge(self, cfg)
         self.policy = policy if policy is not None else create_policy(cfg.policy_name)
         self.policy.reset()
+        self.bridge = RosBridge(self, cfg, self.policy.image_sources)
 
         self._gripper_state = 1.0 if cfg.initial_gripper_open else 0.0
 
@@ -120,13 +123,14 @@ class PolicyInferenceNode(Node):
         self._gripper_state = 1.0
 
     def _build_obs(self, ros_data):
-        return {
-            "rgb": resize_image(ros_data["rgb"], self.cfg.image_size, is_depth=False),
-            "depth": resize_image(ros_data["depth"], self.cfg.image_size, is_depth=True),
+        obs = {
             "joint_pos": ros_data["joint_pos"],
             "gripper_state": np.float32(self._gripper_state),
             "ft_wrench": ros_data["ft_wrench"],
         }
+        for source in self.policy.image_sources:
+            obs[source] = resize_image(ros_data[source], self.cfg.image_size, is_depth=source.endswith("depth"))
+        return obs
 
     def _on_health_check(self):
         """Warn (throttled) about any subscribed topic that has no

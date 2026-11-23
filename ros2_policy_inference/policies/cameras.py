@@ -10,14 +10,17 @@ cameras block states where each one comes from and how to encode it:
       observation.images.depth:
         source: depth
         encoding: depth
-        info_path: /checkpoints/<ckpt>/depth_info.json
+        info_path: depth_info.json   # relative to the checkpoint dir
 
-A new camera configuration (rgb only, depth only, rgb+depth, two rgb+depth cameras) is then a
-config.yaml change, not a code change.
+Cameras the checkpoint doesn't take are ignored, so one config.yaml covers checkpoints with
+and without the head camera.
 """
 import json
+import os
 
 import numpy as np
+
+from .base_policy import IMAGE_SOURCES
 
 
 def encode_depth(depth, d_min, d_max):
@@ -32,14 +35,14 @@ def encode_depth(depth, d_min, d_max):
     return np.repeat(gray[:, :, None], 3, axis=2)
 
 
-def _make_encoder(spec):
+def _make_encoder(spec, ckpt_path):
     """One cameras entry -> f(obs value) -> the (H, W, 3) uint8 the model expects. A function
     rather than an inline lambda so each camera's parameters are captured by value."""
     encoding = spec["encoding"]
     if encoding == "rgb":
         return lambda rgb: np.ascontiguousarray(rgb, dtype=np.uint8)
     if encoding == "depth":
-        with open(spec["info_path"]) as f:
+        with open(os.path.join(ckpt_path, spec["info_path"])) as f:
             info = json.load(f)
         # two info schemas in the wild: depth_min/depth_max (mm) or depth_min_m/depth_max_m (metres)
         if "depth_min_m" in info:
@@ -51,15 +54,22 @@ def _make_encoder(spec):
 
 
 def build_cameras(cameras, declared, ckpt_path):
-    """config.yaml's cameras -> {image feature: (obs key, encoder)}.
+    """config.yaml's cameras -> {image feature: (obs key, encoder)} for each feature in declared.
 
     declared is the set of image features the caller expects to feed (pi05 leaves out its
-    empty_camera_* placeholders, which it fills itself). The two must match exactly, so a
-    checkpoint whose inputs changed fails here rather than at the first inference.
+    empty_camera_* placeholders, which it fills itself).
     """
-    if set(cameras) != set(declared):
-        raise ValueError(
-            f"config.yaml cameras {sorted(cameras)} don't match the image features "
-            f"{sorted(declared)} of {ckpt_path}"
-        )
-    return {key: (spec["source"], _make_encoder(spec)) for key, spec in cameras.items()}
+    missing = sorted(set(declared) - set(cameras))
+    if missing:
+        raise ValueError(f"config.yaml cameras has no entry for {missing} of {ckpt_path}")
+    out = {}
+    for key in declared:
+        spec = cameras[key]
+        if spec["source"] not in IMAGE_SOURCES:
+            raise ValueError(f"cameras.{key}: unknown source '{spec['source']}' (known: {IMAGE_SOURCES})")
+        out[key] = (spec["source"], _make_encoder(spec, ckpt_path))
+    return out
+
+
+def camera_sources(cameras):
+    return tuple(sorted({source for source, _ in cameras.values()}))

@@ -4,6 +4,8 @@ policy_inference_node:
     joint_state_topic: "/left_arm/joint_states"
     rgb_topic: "/camera_L/color/image_raw/compressed"
     depth_topic: "/camera_L/depth/aligned_depth_to_color"
+    head_rgb_topic: "/camera_H/color/image_raw/compressed"
+    head_depth_topic: "/camera_H/depth/aligned_depth_to_color"
     ft_sensor_topic: "/left_ft/wrench_compensated"
 
     # Which policies/*.py implementation to run
